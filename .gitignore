@@ -1,0 +1,16 @@
+private/
+tools/
+venvs/
+.venv/
+.cache/
+results/
+logs/
+*.pid
+*.token
+.env
+.env.*
+!configs/*.env
+__pycache__/
+*.pyc
+*.log
+.DS_Store
