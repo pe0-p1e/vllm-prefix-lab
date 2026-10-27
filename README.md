@@ -21,3 +21,16 @@ bash scripts/run_matrix.sh --quick
 ```
 
 The repo contains a reproducible APC on/off comparison using vLLM's built-in `prefix_repetition` dataset. No model weights or credentials should be committed.
+
+## CPU–GPU tiered KV baseline
+
+Once the GPU-only APC benchmark is working, the next task is to distinguish HBM prefix reuse from CPU DRAM KV recovery. This uses **vLLM native CPU KV offloading**, not a custom cache. With a free GPU and enough host RAM:
+
+```bash
+source scripts/env.sh
+source scripts/proxy_env.sh off
+CUDA_VISIBLE_DEVICES=1 bash scripts/run_tiered.sh
+cat "$(cat results/TIERED_LATEST)/REPORT.md"
+```
+
+See [CPU–GPU experiment design and resource limits](docs/tiered-kv.md). The separate `TIERED_LATEST` pointer preserves the original APC results.
