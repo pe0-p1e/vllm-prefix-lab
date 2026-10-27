@@ -8,7 +8,10 @@ import sys
 
 def parse_counter(text, name):
     vals = []
-    # Prometheus exports Python Counter metrics with a _total suffix. The\n    # vLLM metric declaration omits _total, so accept both spellings but\n    # never count _created or unrelated metrics.\n    pattern = re.compile(r'^' + re.escape(name) + r'(?:_total)?(?:\{[^}]*\})?\s+([0-9.eE+-]+)(?:\s|$)')
+    # Prometheus exports Python Counter metrics with a _total suffix. The
+    # vLLM metric declaration omits _total, so accept both spellings but
+    # never count _created or unrelated metrics.
+    pattern = re.compile(r'^' + re.escape(name) + r'(?:_total)?(?:\{[^}]*\})?\s+([0-9.eE+-]+)(?:\s|$)')
     for line in text.splitlines():
         m = pattern.match(line)
         if m:
