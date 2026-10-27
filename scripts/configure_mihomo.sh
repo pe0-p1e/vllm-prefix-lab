@@ -96,6 +96,18 @@ dst.write_text("".join(out), encoding="utf-8")
 PY
 
 chmod 600 "$STAGED"
+
+# GEO assets are not part of subscriptions. In restricted networks Mihomo's
+# default direct GitHub download fails during -t; fetch them via the mirror.
+if grep -Eq '^geodata-mode:[[:space:]]*true([[:space:]]|$)' "$STAGED"; then
+  bash "$LAB_REPO_DIR/scripts/fetch_geodata.sh" geoip.dat
+else
+  bash "$LAB_REPO_DIR/scripts/fetch_geodata.sh" geoip.metadb
+fi
+if grep -Eq 'GEOSITE,' "$STAGED"; then
+  bash "$LAB_REPO_DIR/scripts/fetch_geodata.sh" geosite.dat
+fi
+
 if ! "$BIN" -t -d "$D" -f "$STAGED"; then
   echo 'Mihomo config validation failed; old config remains untouched.' >&2
   echo 'If subscription format is incompatible, export a Clash Meta YAML profile and use --file.' >&2
