@@ -65,6 +65,8 @@ trap stop_server EXIT INT TERM
 MODES="gpu cpu"
 if [[ "$MODE_CHOICE" != both ]]; then MODES="$MODE_CHOICE"; fi
 export VLLM_USE_FLASHINFER_SAMPLER=0
+# Lock the filler count across GPU and CPU modes so they use the same trace.
+FILLERS_LOCKED="$(printenv TIER_FILLERS || true)"
 
 for MODE in $MODES; do
   OUT="$RUN_ROOT/$MODE"
@@ -100,7 +102,9 @@ for MODE in $MODES; do
 
   GPU_TOKENS="$(grep -oE 'GPU KV cache size: [0-9,]+ tokens' "$OUT/server.log" | tail -n1 | awk '{print $5}' | tr -d ',' || true)"
   [[ "$GPU_TOKENS" =~ ^[0-9]+$ ]] || { echo 'Missing GPU KV cache capacity; aborting unverified eviction experiment.' >&2; exit 1; }
-  FILLERS=$(( (GPU_TOKENS + PREFIX_LEN - 1) / PREFIX_LEN + 1 ))
+  AUTO_FILLERS=$(( (GPU_TOKENS + PREFIX_LEN - 1) / PREFIX_LEN + 1 ))
+  if [[ -z "$FILLERS_LOCKED" ]]; then FILLERS_LOCKED="$AUTO_FILLERS"; fi
+  FILLERS="$FILLERS_LOCKED"
   (( FILLERS >= 2 && FILLERS <= 32 )) || { echo "Unreasonable filler count: $FILLERS" >&2; exit 1; }
   echo "GPU KV cache size: $GPU_TOKENS tokens; distinct filler prefixes: $FILLERS"
 
