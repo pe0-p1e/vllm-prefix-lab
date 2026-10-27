@@ -81,3 +81,31 @@ offloading speedup.
 
 Official documentation for vLLM 0.32.0:
 https://docs.vllm.ai/en/v0.32.0/features/kv_offloading_usage/
+
+### Optional shared GPU: functional test only
+
+The default selector requires an almost-idle GPU. On a shared lab node it
+may be acceptable to use **only spare VRAM**, without touching another user's
+process, when the model and cache budgets fit. Use explicit opt-in and a
+generous reserve; the guard is checked before **each** new vLLM server:
+
+~~~bash
+CUDA_VISIBLE_DEVICES=1 LAB_ALLOW_SHARED_GPU=1 \
+TIER_GPU_UTIL=0.22 LAB_GPU_RESERVE_MIB=4096 \
+bash scripts/run_tiered.sh
+~~~
+
+The shared-mode guard requires:
+
+    free VRAM >= (total VRAM * TIER_GPU_UTIL) + LAB_GPU_RESERVE_MIB
+
+If this is not satisfied the experiment refuses to start. The guard is a
+snapshot rather than a VRAM reservation: the other process may grow and
+trigger OOM later. Leave room for it and do not terminate or modify its
+process. Confirm that GPU sharing is permitted by lab policy.
+
+**Results gathered concurrently with unrelated GPU workloads are exploratory
+only**, suitable for checking host-cache functionality. Their TTFT, ITL and
+throughput are confounded by contention. For a publishable GPU-vs-CPU
+latency comparison, repeat on an otherwise idle GPU and log device
+utilization throughout the experiment.
