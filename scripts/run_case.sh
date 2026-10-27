@@ -63,7 +63,8 @@ READY=0
 for ((i=0;i<240;i++)); do
   if ! kill -0 "$SERVER_PID" 2>/dev/null; then
     echo "Server exited during startup. See $OUT/server.log" >&2
-    tail -n 60 "$OUT/server.log" >&2
+    bash "$LAB_REPO_DIR/scripts/diagnose_startup.sh" "$OUT/server.log" 2>&1 | tee "$OUT/startup_diagnostics.txt" >&2
+    tail -n 20 "$OUT/server.log" >&2
     exit 1
   fi
   if curl --noproxy '*' -fsS --max-time 1 "http://127.0.0.1:$LAB_PORT/v1/models" > "$OUT/models.json" 2>/dev/null; then READY=1; break; fi
