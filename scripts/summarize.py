@@ -8,7 +8,7 @@ import sys
 
 def parse_counter(text, name):
     vals = []
-    pattern = re.compile(r'^' + re.escape(name) + r'(?:\{[^}]*\})?\s+([0-9.eE+-]+)(?:\s|$)')
+    # Prometheus exports Python Counter metrics with a _total suffix. The\n    # vLLM metric declaration omits _total, so accept both spellings but\n    # never count _created or unrelated metrics.\n    pattern = re.compile(r'^' + re.escape(name) + r'(?:_total)?(?:\{[^}]*\})?\s+([0-9.eE+-]+)(?:\s|$)')
     for line in text.splitlines():
         m = pattern.match(line)
         if m:
@@ -57,8 +57,8 @@ def main():
           '| Case | Completed | TTFT median ms | TTFT p99 ms | Throughput req/s | Prefix hit ratio |',
           '|---|---:|---:|---:|---:|---:|']
     for row in rows:
-        md.append('| ' + ' | '.join(fmt(x) for x in [row['case'],row.get('completed'),row.get('median_ttft_ms'),row.get('p99_ttft_ms'),row.get('request_throughput'),row.get('prefix_cache_hit_ratio')]) + ' |')
-    md += ['', 'Compare APC on/off only with the same model, prefix length, concurrency, arrival rate and GPU memory budget.']
+        md.append('| ' + ' | '.join(fmt(x) for x in [row['case'],row.get('completed'),row.get('median_ttft_ms'),row.get('p99_ttft_ms'),row.get('request_throughput'),('N/A' if row.get('prefix_cache_hit_ratio') is None else f"{100*row['prefix_cache_hit_ratio']:.1f}%")]) + ' |')
+    md += ['', 'Prefix hit ratio is token-level delta(prefix_cache_hits_total) / delta(prefix_cache_queries_total); N/A indicates zero or missing queries.', '', 'Compare APC on/off only with the same model, prefix length, concurrency, arrival rate and GPU memory budget.']
     (root / 'REPORT.md').write_text('\n'.join(md)+'\n')
     print('Saved:',root/'summary.csv','and',root/'REPORT.md')
 
