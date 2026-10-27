@@ -29,13 +29,36 @@ if requested:
         sys.exit('Requested GPU index is not reported by nvidia-smi')
 else:
     options=sorted(devices,key=lambda d:d[1]/d[2])
-# Conservative shared-server guard: another workload likely holds the GPU
-usable=[d for d in options if d[1] <= max(512,int(d[2]*0.10))]
-if not usable:
-    sys.exit('No sufficiently idle GPU. Inspect nvidia-smi; do not stop other users\' jobs.')
-chosen=usable[0]
+# Default: require an almost-idle GPU. Shared mode needs explicit opt-in,
+# an explicit physical GPU index, and enough FREE VRAM for vLLM's fraction
+# of TOTAL device memory plus a configurable reserve.
+shared = os.environ.get("LAB_ALLOW_SHARED_GPU", "0") == "1"
+if shared:
+    if not requested:
+        sys.exit("Shared GPU mode requires an explicit CUDA_VISIBLE_DEVICES=<physical index>")
+    try:
+        fraction = float(os.environ.get("LAB_REQUIRED_GPU_FRACTION", "0.45"))
+        reserve_mib = int(os.environ.get("LAB_GPU_RESERVE_MIB", "2048"))
+    except ValueError:
+        sys.exit("Invalid LAB_REQUIRED_GPU_FRACTION or LAB_GPU_RESERVE_MIB")
+    if not (0.05 <= fraction <= 0.95 and reserve_mib >= 1024):
+        sys.exit("Invalid memory fraction or reserve (< 1024 MiB)")
+    usable = [d for d in options if d[2]-d[1] >= d[2]*fraction + reserve_mib]
+    if not usable:
+        for idx, used, total in options:
+            needed = total*fraction + reserve_mib
+            print(f"GPU {idx}: free={total-used} MiB, need >= {needed:.0f} MiB "
+                  f"(fraction={fraction}, reserve={reserve_mib} MiB)",file=sys.stderr)
+        sys.exit("Not enough free GPU memory for shared test. Aborting without affecting other jobs.")
+else:
+    usable = [d for d in options if d[1] <= max(512, int(d[2]*0.10))]
+    if not usable:
+        sys.exit("No sufficiently idle GPU. For a limited shared functional test, "
+                 "set LAB_ALLOW_SHARED_GPU=1 explicitly and keep sufficient VRAM reserve.")
+chosen = usable[0]
 print(chosen[0])
-print(f'Selected physical GPU {chosen[0]}: {chosen[1]}/{chosen[2]} MiB used',file=sys.stderr)
+print(f"Selected physical GPU {chosen[0]}: {chosen[1]}/{chosen[2]} MiB used; "
+      f"{'shared (latency data confounded)' if shared else 'idle'}",file=sys.stderr)
 PY
 )" || return 2
 export CUDA_VISIBLE_DEVICES="$GPU_CHOICE"
