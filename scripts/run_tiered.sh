@@ -2,6 +2,8 @@
 # HBM-only APC versus native pinned-DRAM KV offload on one idle GPU.
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
+# vLLM gpu-memory-utilization is a fraction of total VRAM, not free VRAM.
+export LAB_REQUIRED_GPU_FRACTION="$(printenv TIER_GPU_UTIL || echo 0.28)"
 source "$(dirname "$0")/select_gpu.sh"
 unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
 
@@ -41,6 +43,7 @@ printf '%s\n' "$RUN_ROOT" > "$LAB_REPO_DIR/results/TIERED_LATEST"
 {
   echo "model=$MODEL_PATH gpu=$CUDA_VISIBLE_DEVICES prefix=$PREFIX_LEN suffix=$SUFFIX_LEN output=$OUTPUT_LEN"
   echo "gpu_memory_utilization=$GPU_UTIL cpu_gib=$CPU_GIB max_model_len=$MAX_MODEL_LEN port=$PORT"
+  echo "shared_gpu_opt_in=${LAB_ALLOW_SHARED_GPU:-0} gpu_reserve_mib=${LAB_GPU_RESERVE_MIB:-2048}"
   "$VLLM" --version
   nvidia-smi --query-gpu=index,name,memory.total,memory.used --format=csv,noheader
 } > "$RUN_ROOT/setup.txt"
@@ -69,9 +72,12 @@ export VLLM_USE_FLASHINFER_SAMPLER=0
 FILLERS_LOCKED="$(printenv TIER_FILLERS || true)"
 
 for MODE in $MODES; do
+  # Other jobs can change memory use between the two server restarts.
+  source "$(dirname "$0")/select_gpu.sh"
   OUT="$RUN_ROOT/$MODE"
   mkdir -p "$OUT"
   echo "=== $MODE: prefix=$PREFIX_LEN output=$OUTPUT_LEN GPU=$CUDA_VISIBLE_DEVICES ==="
+  nvidia-smi --query-gpu=index,memory.used,memory.free,memory.total,utilization.gpu --format=csv,noheader >> "$OUT/machine_before.txt"
   CMD=("$VLLM" serve "$MODEL_PATH"
     --served-model-name qwen-tiered-lab
     --max-model-len "$MAX_MODEL_LEN"
