@@ -19,6 +19,10 @@ MODEL_LEN="$(printenv MAX_MODEL_LEN || echo 8192)"
 SUFFIX_LEN="$(printenv SUFFIX_LEN || echo 128)"
 OUTPUT_LEN="$(printenv OUTPUT_LEN || echo 32)"
 GPU_MEMORY_UTILIZATION="$(printenv GPU_MEMORY_UTILIZATION || echo 0.45)"
+# FlashInfer sampling JIT is not required for the prefix-cache experiment.
+# The PyTorch/Triton sampler avoids a missing/broken nvcc/ninja toolchain.
+# Override with VLLM_USE_FLASHINFER_SAMPLER=1 only after toolchain verification.
+export VLLM_USE_FLASHINFER_SAMPLER="${VLLM_USE_FLASHINFER_SAMPLER:-0}"
 REQUEST_RATE="$(printenv REQUEST_RATE || echo 2)"
 NUM_PROMPTS="$(printenv NUM_PROMPTS || echo 48)"
 NUM_PREFIXES="$(printenv NUM_PREFIXES || echo 4)"
@@ -48,6 +52,7 @@ fi
 { date -Is; uname -a; nvidia-smi --query-gpu=index,name,memory.total,memory.used --format=csv,noheader || true; } > "$OUT/machine.txt"
 printf 'apc=%s\nprefix_len=%s\nconcurrency=%s\nmodel_path=%s\nmax_model_len=%s\ngpu_memory_utilization=%s\nrequest_rate=%s\nnum_prompts=%s\nnum_prefixes=%s\nsuffix_len=%s\noutput_len=%s\n' "$APC" "$PREFIX_LEN" "$CONCURRENCY" "$MODEL_PATH" "$MODEL_LEN" "$GPU_MEMORY_UTILIZATION" "$REQUEST_RATE" "$NUM_PROMPTS" "$NUM_PREFIXES" "$SUFFIX_LEN" "$OUTPUT_LEN" > "$OUT/config.txt"
 printf 'CUDA_VISIBLE_DEVICES=%s\n' "$CUDA_VISIBLE_DEVICES" >> "$OUT/config.txt"
+printf 'VLLM_USE_FLASHINFER_SAMPLER=%s\nFLASHINFER_WORKSPACE_BASE=%s\n' "$VLLM_USE_FLASHINFER_SAMPLER" "$FLASHINFER_WORKSPACE_BASE" >> "$OUT/config.txt"
 "$VLLM" serve "$MODEL_PATH" \
  --served-model-name qwen-lab \
  --max-model-len "$MODEL_LEN" \
