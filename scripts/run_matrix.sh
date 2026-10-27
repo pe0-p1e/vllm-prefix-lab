@@ -11,6 +11,7 @@ case "$MODE" in
     exit 0 ;;
   *) echo 'Usage: bash scripts/run_matrix.sh --quick|--full|--list' >&2; exit 2 ;;
 esac
+source "$(dirname "$0")/select_gpu.sh"
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 RUN_ROOT="$LAB_REPO_DIR/results/$RUN_ID"
 mkdir -p "$RUN_ROOT"
