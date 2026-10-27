@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
+source "$(dirname "$0")/select_gpu.sh"
 [[ $# -eq 4 ]] || { echo 'Usage: run_case.sh on|off prefix_len concurrency out_dir' >&2; exit 2; }
 APC="$1"; PREFIX_LEN="$2"; CONCURRENCY="$3"; OUT="$4"
 [[ "$APC" == on || "$APC" == off ]] || exit 2
@@ -46,6 +47,7 @@ fi
 "$VLLM" --version > "$OUT/vllm_version.txt" 2>&1 || true
 { date -Is; uname -a; nvidia-smi --query-gpu=index,name,memory.total,memory.used --format=csv,noheader || true; } > "$OUT/machine.txt"
 printf 'apc=%s\nprefix_len=%s\nconcurrency=%s\nmodel_path=%s\nmax_model_len=%s\ngpu_memory_utilization=%s\nrequest_rate=%s\nnum_prompts=%s\nnum_prefixes=%s\nsuffix_len=%s\noutput_len=%s\n' "$APC" "$PREFIX_LEN" "$CONCURRENCY" "$MODEL_PATH" "$MODEL_LEN" "$GPU_MEMORY_UTILIZATION" "$REQUEST_RATE" "$NUM_PROMPTS" "$NUM_PREFIXES" "$SUFFIX_LEN" "$OUTPUT_LEN" > "$OUT/config.txt"
+printf 'CUDA_VISIBLE_DEVICES=%s\n' "$CUDA_VISIBLE_DEVICES" >> "$OUT/config.txt"
 "$VLLM" serve "$MODEL_PATH" \
  --served-model-name qwen-lab \
  --max-model-len "$MODEL_LEN" \
