@@ -64,10 +64,15 @@ def main():
             f"{data['revisit_gpu_cached_tokens']:.0f} |"
         )
 
-    valid = records.get("cpu", {}).get("cpu_hit_verified", False)
+    cpu_hit = records.get("cpu", {}).get("cpu_hit_verified", False)
+    gpu = records.get("gpu")
+    gpu_miss = bool(gpu and gpu.get("revisit_gpu_cached_tokens", 0) < 0.1 * gpu["prefix_len"])
+    valid = bool(cpu_hit and gpu_miss)
     md += [
         "",
-        f"**Verified CPU-replay host KV hit: {'YES' if valid else 'NO / NOT CHECKED'}**",
+        f"**CPU host hit observed: {'YES' if cpu_hit else 'NO / NOT CHECKED'}**",
+        f"**GPU-only replay cache miss: {'YES' if gpu_miss else 'NO / NOT CHECKED'}**",
+        f"**Matched eviction/recovery experiment validated: {'YES' if valid else 'NO'}**",
         "",
         "* ITL is client-side streamed-chunk inter-arrival latency, an",
         "approximation to TPOT, not an instrumented GPU kernel time.",
@@ -81,7 +86,7 @@ def main():
     (root / "REPORT.md").write_text("\n".join(md) + "\n")
     print("Saved", root / "REPORT.md", "and", root / "requests.csv")
     if "cpu" in records and not valid:
-        print("WARNING: no CPU cache hit. Do not present CPU replay as offload speedup.")
+        print("WARNING: host hit or GPU-only eviction unverified; do not claim CPU recovery speedup.")
 
 
 if __name__ == "__main__":
