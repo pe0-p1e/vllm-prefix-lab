@@ -143,3 +143,47 @@ confidence interval. A confirmed host hit only establishes the cache
 mechanism; it does not rule out shared-GPU interference with TTFT or TPOT.
 For a meaningful host-vs-HBM study also compare 8K/16K/24K prefixes and
 concurrent decode workloads.
+
+### Active Decode interference probe
+
+This optional experiment is **separate** from the paired A-B-A benchmark.
+It starts one native-CPU-offloading vLLM server, fills CPU KV for prefix A,
+evicts A from GPU HBM, then measures:
+
+1. A long Decode stream without a competing request (baseline).
+2. Another long Decode stream, injecting A's host-KV restoration after 96
+   streamed chunks (the treatment). The two requests genuinely overlap.
+3. The background stream's before/during/after inter-chunk intervals,
+   the restoration request's TTFT, host-token-hit source, and native
+   CPU-to-GPU offloading byte and CUDA-event time counters.
+
+On an idle GPU:
+
+~~~bash
+cd /state/partition/fyzhou/vllm-prefix-lab
+git pull --ff-only origin exp/vllm-apc-baseline
+source scripts/env.sh
+source scripts/proxy_env.sh off
+nvidia-smi
+
+CUDA_VISIBLE_DEVICES=1 TIER_MODE=cpu TIER_RUN_OVERLAP=1 \
+TIER_GPU_UTIL=0.22 OVERLAP_DECODE_LEN=768 OVERLAP_TRIGGER_AT=96 \
+bash scripts/run_tiered.sh 2>&1 | tee results/overlap-console.log
+
+RUN_DIR=$(cat results/OVERLAP_LATEST)
+cat "$RUN_DIR/OVERLAP_REPORT.md"
+cat "$RUN_DIR/cpu/overlap.log"
+~~~
+
+This reuses run_tiered.sh's GPU selection and host RAM checks. It writes
+OVERLAP_LATEST without overwriting the repeated-pair result pointer.
+If LAB_ALLOW_SHARED_GPU=1 is needed, leave sufficient VRAM reserve as
+described above. Do not compare interference latencies on a busy GPU.
+
+Interpretation limits: server-side prefill and scheduling may coincide with
+DMA. The foreground request's full submission-to-response window is
+not the exact DMA interval. The vLLM native kv_offload_load_time counter
+reflects the sum of CUDA-event timing of completed H2D transfers, not the
+end-to-end user-perceived delay. The single treatment run is a functional
+check; repeat with randomized order and comparable GPU-only control
+requests before drawing causal performance conclusions.
