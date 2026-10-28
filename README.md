@@ -1,36 +1,31 @@
 # vLLM Prefix Cache Lab
 
-Native vLLM Automatic Prefix Caching experiments on the shared lab 4090-02 GPU node. Not a Mooncake reproduction.
+Controlled single-node vLLM automatic prefix caching (APC) latency experiments.
+**Active branch:** `exp/prefix-hit-matrix`. Old CPU KV/offload, mihomo, installation
+and overlap experiments remain in `exp/vllm-apc-baseline`, not in this tree.
 
-All writable data and tools stay under `/state/partition/fyzhou`. No sudo or global shell changes. See branch `exp/vllm-apc-baseline` for scripts.
+## Layout
 
-## Clone
+- `src/prefix_lab.py`: exact-length token ID construction, HTTP client, metrics verification
+- `scripts/run.sh`: isolated vLLM server per (length, ratio, mode) cell
+- `scripts/summary.py`: aggregate validated JSON to CSV
+- `tests/test_prefix_lab.py`: CPU-only deterministic unit tests
+- `docs/EXPERIMENT.md`: protocol, limitations, commands, audit guide
+
+## Quick start (4090-02)
 
 ```bash
 ssh 4090-02
-mkdir -p /state/partition/fyzhou
-cd /state/partition/fyzhou
-git clone https://github.com/pe0-p1e/vllm-prefix-lab.git
-cd vllm-prefix-lab
-git switch exp/vllm-apc-baseline
-source scripts/env.sh
-bash scripts/doctor.sh
-bash scripts/install_uv.sh
-bash scripts/install_vllm.sh
-bash scripts/run_matrix.sh --quick
+cd /state/partition/fyzhou/vllm-prefix-lab
+git fetch origin
+git switch exp/prefix-hit-matrix
+git pull --ff-only
+python3 -m unittest discover -s tests -v
+# Set vLLM executable and model path only if different from current lab:
+LAB_LENGTHS="2048 4096" LAB_RATIOS="0 0.5 0.75" LAB_REPEATS=3 bash scripts/run.sh
+cat "$(cat /state/partition/fyzhou/results/prefix-lab/LATEST)/matrix.csv"
 ```
 
-The repo contains a reproducible APC on/off comparison using vLLM's built-in `prefix_repetition` dataset. No model weights or credentials should be committed.
-
-## CPU–GPU tiered KV baseline
-
-Once the GPU-only APC benchmark is working, the next task is to distinguish HBM prefix reuse from CPU DRAM KV recovery. This uses **vLLM native CPU KV offloading**, not a custom cache. With a free GPU and enough host RAM:
-
-```bash
-source scripts/env.sh
-source scripts/proxy_env.sh off
-CUDA_VISIBLE_DEVICES=1 bash scripts/run_tiered.sh
-cat "$(cat results/TIERED_LATEST)/REPORT.md"
-```
-
-See [CPU–GPU experiment design and resource limits](docs/tiered-kv.md). The separate `TIERED_LATEST` pointer preserves the original APC results.
+Read `docs/EXPERIMENT.md` before running. No script installs dependencies,
+uses sudo, edits shell startup files, kills unrelated processes or downloads
+models. Model weights and runtime results do not belong in Git.
