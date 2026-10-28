@@ -24,6 +24,11 @@ PYTHON="$LAB_VENV/bin/python"
 [[ "$PREFIX_LEN" =~ ^[0-9]+$ && "$SUFFIX_LEN" =~ ^[0-9]+$ && "$OUTPUT_LEN" =~ ^[0-9]+$ ]] || exit 2
 (( PREFIX_LEN + SUFFIX_LEN + OUTPUT_LEN < MAX_MODEL_LEN )) || { echo 'Context too short' >&2; exit 2; }
 [[ "$MODE_CHOICE" == both || "$MODE_CHOICE" == cpu || "$MODE_CHOICE" == gpu ]] || { echo 'TIER_MODE must be both, gpu, or cpu' >&2; exit 2; }
+OVERLAP="$(printenv TIER_RUN_OVERLAP || echo 0)"
+if [[ "$OVERLAP" == 1 && "$MODE_CHOICE" != cpu ]]; then
+  echo "TIER_RUN_OVERLAP=1 requires TIER_MODE=cpu" >&2
+  exit 2
+fi
 
 if [[ "$MODE_CHOICE" != gpu ]]; then
   python3 - "$CPU_GIB" <<'PY'
@@ -40,6 +45,9 @@ fi
 RUN_ROOT="$LAB_REPO_DIR/results/tiered-$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$RUN_ROOT"
 printf '%s\n' "$RUN_ROOT" > "$LAB_REPO_DIR/results/TIERED_LATEST"
+if [[ "$OVERLAP" == 1 ]]; then
+  printf '%s\n' "$RUN_ROOT" > "$LAB_REPO_DIR/results/OVERLAP_LATEST"
+fi
 {
   echo "model=$MODEL_PATH gpu=$CUDA_VISIBLE_DEVICES prefix=$PREFIX_LEN suffix=$SUFFIX_LEN output=$OUTPUT_LEN"
   echo "gpu_memory_utilization=$GPU_UTIL cpu_gib=$CPU_GIB max_model_len=$MAX_MODEL_LEN port=$PORT"
@@ -135,6 +143,16 @@ if estimated > .85*cpu_gib:
 PY
   fi
 
+  if [[ "$OVERLAP" == 1 ]]; then
+    "$PYTHON" "$LAB_REPO_DIR/scripts/overlap_probe.py" \
+      --model-path "$MODEL_PATH" --base-url "http://127.0.0.1:$PORT" \
+      --prefix-len "$PREFIX_LEN" --suffix-len "$SUFFIX_LEN" \
+      --decode-len "$(printenv OVERLAP_DECODE_LEN || echo 768)" \
+      --trigger-at "$(printenv OVERLAP_TRIGGER_AT || echo 96)" \
+      --fillers "$FILLERS" --gpu-kv-tokens "$GPU_TOKENS" \
+      --out "$OUT/overlap.json" | tee "$OUT/overlap.log"
+    "$PYTHON" "$LAB_REPO_DIR/scripts/summarize_overlap.py" "$RUN_ROOT"
+  else
   "$PYTHON" "$LAB_REPO_DIR/scripts/tiered_probe.py" \
     --mode "$MODE" --model-path "$MODEL_PATH" \
     --base-url "http://127.0.0.1:$PORT" \
@@ -142,9 +160,12 @@ PY
     --output-len "$OUTPUT_LEN" --fillers "$FILLERS" \
     --gpu-kv-tokens "$GPU_TOKENS" \
     --out "$OUT/probe.json" | tee "$OUT/probe.log"
+  fi
   curl --noproxy '*' -fsS "http://127.0.0.1:$PORT/metrics" > "$OUT/metrics_after.txt" || true
   stop_server
   sleep 4
 done
-"$PYTHON" "$LAB_REPO_DIR/scripts/summarize_tiered.py" "$RUN_ROOT"
+if [[ "$OVERLAP" != 1 ]]; then
+  "$PYTHON" "$LAB_REPO_DIR/scripts/summarize_tiered.py" "$RUN_ROOT"
+fi
 echo "Results: $RUN_ROOT"
