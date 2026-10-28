@@ -34,6 +34,11 @@ def read_counters(opener, base_url):
         "vllm:external_prefix_cache_hits",
         "vllm:prefix_cache_queries",
         "vllm:external_prefix_cache_queries",
+        # Native OffloadingConnector GPU <-> CPU transfer counters.
+        "vllm:kv_offload_load_bytes",
+        "vllm:kv_offload_load_time",
+        "vllm:kv_offload_store_bytes",
+        "vllm:kv_offload_store_time",
     )
     result = {}
     for line in lines:
