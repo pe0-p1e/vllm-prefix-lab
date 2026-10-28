@@ -109,3 +109,37 @@ only**, suitable for checking host-cache functionality. Their TTFT, ITL and
 throughput are confounded by contention. For a publishable GPU-vs-CPU
 latency comparison, repeat on an otherwise idle GPU and log device
 utilization throughout the experiment.
+
+### Repeated paired measurements
+
+After the single A-B-A experiment has verified host hits and GPU eviction,
+collect independent pairs and alternate run order. Each pair starts fresh
+vLLM services; only validated full-prefix host hits are included in summaries.
+
+~~~bash
+source scripts/env.sh
+source scripts/proxy_env.sh off
+
+# Prefer an otherwise idle GPU; defaults to 4 paired repetitions.
+CUDA_VISIBLE_DEVICES=1 TIER_REPEATS=4 \
+bash scripts/repeat_tiered.sh 2>&1 | tee results/repeat-console.log
+
+ROOT=$(cat results/TIERED_REPEAT_LATEST)
+cat "$ROOT/REPORT.md"
+cat "$ROOT/pairs.csv"
+~~~
+
+If the GPU is legitimately shared, the explicit spare-VRAM opt-in still
+works, but numbers are exploratory until repeated with no competing jobs:
+
+~~~bash
+CUDA_VISIBLE_DEVICES=1 LAB_ALLOW_SHARED_GPU=1 \
+TIER_GPU_UTIL=0.22 LAB_GPU_RESERVE_MIB=4096 TIER_REPEATS=4 \
+bash scripts/repeat_tiered.sh
+~~~
+
+The paired summary reports the median and observed range, **not** a
+confidence interval. A confirmed host hit only establishes the cache
+mechanism; it does not rule out shared-GPU interference with TTFT or TPOT.
+For a meaningful host-vs-HBM study also compare 8K/16K/24K prefixes and
+concurrent decode workloads.
