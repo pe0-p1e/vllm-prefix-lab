@@ -67,6 +67,8 @@ def distribution(values):
                 "mean_ms": None, "max_ms": None}
     values = sorted(values)
     def p(q):
+        if len(values) == 1:
+            return values[0]
         idx = (len(values) - 1) * q
         lo = int(idx)
         hi = min(lo+1, len(values)-1)
