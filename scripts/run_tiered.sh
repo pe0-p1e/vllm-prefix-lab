@@ -44,6 +44,7 @@ printf '%s\n' "$RUN_ROOT" > "$LAB_REPO_DIR/results/TIERED_LATEST"
   echo "model=$MODEL_PATH gpu=$CUDA_VISIBLE_DEVICES prefix=$PREFIX_LEN suffix=$SUFFIX_LEN output=$OUTPUT_LEN"
   echo "gpu_memory_utilization=$GPU_UTIL cpu_gib=$CPU_GIB max_model_len=$MAX_MODEL_LEN port=$PORT"
   echo "shared_gpu_opt_in=${LAB_ALLOW_SHARED_GPU:-0} gpu_reserve_mib=${LAB_GPU_RESERVE_MIB:-2048}"
+  echo "tier_order=${TIER_ORDER:-gpu-cpu}"
   "$VLLM" --version
   nvidia-smi --query-gpu=index,name,memory.total,memory.used --format=csv,noheader
 } > "$RUN_ROOT/setup.txt"
@@ -66,6 +67,13 @@ stop_server() {
 }
 trap stop_server EXIT INT TERM
 MODES="gpu cpu"
+TIER_ORDER="${TIER_ORDER:-gpu-cpu}"
+if [[ "$TIER_ORDER" == cpu-gpu ]]; then
+  MODES="cpu gpu"
+elif [[ "$TIER_ORDER" != gpu-cpu ]]; then
+  echo "TIER_ORDER must be gpu-cpu or cpu-gpu" >&2
+  exit 2
+fi
 if [[ "$MODE_CHOICE" != both ]]; then MODES="$MODE_CHOICE"; fi
 export VLLM_USE_FLASHINFER_SAMPLER=0
 # Lock the filler count across GPU and CPU modes so they use the same trace.
