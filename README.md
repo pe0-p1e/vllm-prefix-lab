@@ -33,8 +33,8 @@ cd /state/partition/fyzhou/vllm-prefix-lab
 git fetch origin
 git switch exp/prefix-hit-matrix
 git pull --ff-only
-python3 -m compileall -q src scripts tests
-python3 -m unittest discover -s tests -v
+/state/partition/fyzhou/venvs/vllm/bin/python -m compileall -q src scripts tests
+/state/partition/fyzhou/venvs/vllm/bin/python -m unittest discover -s tests -v
 
 # Inspect nvidia-smi and select an authorized, sufficiently free GPU.
 # Small integration smoke test first:
