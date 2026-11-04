@@ -18,11 +18,13 @@ import time
 import urllib.request
 from datetime import datetime, timezone
 
-from src.prefix_lab import make_ids
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+from src.token_ids import make_ids
 
 
 METRICS = {
     "prefill_ms": "vllm:request_prefill_time_seconds_sum",
+    "prefill_count": "vllm:request_prefill_time_seconds_count",
     "prefill_computed_tokens": "vllm:request_prefill_kv_computed_tokens_sum",
     "host_cached_tokens": "vllm:prompt_tokens_cached_by_source_total",
     "queue_ms": "vllm:request_queue_time_seconds_sum",
@@ -256,6 +258,12 @@ def main():
                     files_before = set(case.glob("kvload-*.json"))
                     ttft,e2e = sample_request(opener,base_url,source)
                     after = metrics(opener,base_url)
+                    for _ in range(30):
+                        if (after.get(METRICS["prefill_count"],0) >
+                                prior.get(METRICS["prefill_count"],0)):
+                            break
+                        time.sleep(.1)
+                        after = metrics(opener,base_url)
                     delta = {k:after.get(k,0)-prior.get(k,0)
                              for k in METRICS.values()
                              if k in prior and k in after}
@@ -271,6 +279,8 @@ def main():
                     computed = delta.get(METRICS["prefill_computed_tokens"],None)
                     injected = load["injected_hit_tokens"] if load else 0
                     valid = (injected == hit and
+                             after.get(METRICS["prefill_count"],0) >
+                             prior.get(METRICS["prefill_count"],0) and
                              computed is not None and
                              abs(computed-(length-hit)) <= a.block_size and
                              (hit == 0 or
