@@ -203,7 +203,7 @@ def main():
     base_url = f"http://127.0.0.1:{a.port}"
     result = []
     for length in a.lengths:
-        if max_pos and length > max_pos and not a.allow_extended_context:
+        if max_pos and length + 1 > max_pos and not a.allow_extended_context:
             result.append(dict(length=length, status="unsupported_model_context",
                                error=f"max_position_embeddings={max_pos}"))
             continue
@@ -215,8 +215,9 @@ def main():
             case.mkdir()
             try:
                 with socket.create_connection(("127.0.0.1", a.port), timeout=.5):
-                    raise RuntimeError("Port already occupied by another process")
-            except (ConnectionRefusedError, TimeoutError, OSError):
+                    pass
+                raise RuntimeError("Port already occupied by another process")
+            except (ConnectionRefusedError, TimeoutError):
                 pass
             extra = dict(forced_hit_tokens=hit, pinned=a.pinned,
                          metrics_dir=str(case))
