@@ -27,13 +27,20 @@ TOTAL="$(nvidia-smi -i "$GPU" --query-gpu=memory.total --format=csv,noheader,nou
 export HF_HOME="$ROOT/cache/huggingface" XDG_CACHE_HOME="$ROOT/cache/xdg"
 export VLLM_CACHE_ROOT="$ROOT/cache/vllm" TRITON_CACHE_DIR="$ROOT/cache/triton"
 export CUDA_CACHE_PATH="$ROOT/cache/cuda" TMPDIR="$ROOT/tmp"
+# Avoid FlashInfer sampler JIT: the host nvcc rejects --compress-mode=size.
+# Keep this local to the experiment process; do not modify system CUDA.
+export VLLM_USE_FLASHINFER_SAMPLER=0
+# Prevent FlashInfer JIT artifacts from falling back to ~/.cache/flashinfer.
+export FLASHINFER_WORKSPACE_BASE="$ROOT/cache/flashinfer-workspace"
 mkdir -p "$OUT" "$HF_HOME" "$XDG_CACHE_HOME" "$VLLM_CACHE_ROOT" \
-  "$TRITON_CACHE_DIR" "$CUDA_CACHE_PATH" "$TMPDIR"
+  "$TRITON_CACHE_DIR" "$CUDA_CACHE_PATH" "$TMPDIR" "$FLASHINFER_WORKSPACE_BASE"
 printf '%s\n' "$OUT" > "$ROOT/results/prefix-lab/LATEST"
 "$VENV/bin/vllm" --version > "$OUT/version.txt"
 nvidia-smi -i "$GPU" > "$OUT/gpu.txt"
 printf 'model=%s\nlengths=%s\nratios=%s\nrepeats=%s\nmaxlen=%s\n' \
  "$MODEL" "$LENGTHS" "$RATIOS" "$REPEATS" "$MAXLEN" > "$OUT/config.txt"
+printf 'sampler=%s\nflashinfer_workspace=%s\n' \
+ "$VLLM_USE_FLASHINFER_SAMPLER" "$FLASHINFER_WORKSPACE_BASE" >> "$OUT/config.txt"
 PID=""
 cleanup() {
   if [[ -n "$PID" ]] && kill -0 "$PID" 2>/dev/null; then
