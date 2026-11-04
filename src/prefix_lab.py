@@ -86,11 +86,23 @@ def one_token(opener, base, model, ids):
                 obj = json.loads(line[5:].strip())
                 if "error" in obj:
                     raise RuntimeError(str(obj["error"]))
-                if obj.get("choices") and obj["choices"][0].get("finish_reason") is None:
+                # With max_tokens=1, vLLM may put the *only* token in
+                # a chunk that already carries finish_reason="length".
+                # The previous finish_reason-is-None filter discarded it.
+                choices = obj.get("choices") or []
+                if not choices:
+                    continue
+                choice = choices[0]
+                if "text" in choice or "token_ids" in choice:
+                    first = time.perf_counter()
+                    break
+                if choice.get("finish_reason") is not None:
+                    # A terminal choice without text can occur for an
+                    # unrenderable token; treat receipt as a one-token bound.
                     first = time.perf_counter()
                     break
     if first is None:
-        raise RuntimeError("No first generated token")
+        raise RuntimeError("No completion choice in streamed response; inspect server/probe logs")
     return round(1000 * (first - start), 3)
 
 
