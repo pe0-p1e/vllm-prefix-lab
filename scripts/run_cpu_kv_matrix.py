@@ -9,6 +9,7 @@ import csv
 import json
 import os
 import pathlib
+import random
 import signal
 import socket
 import statistics
@@ -150,6 +151,7 @@ def main():
     p.add_argument("--ready-timeout", type=int, default=300)
     p.add_argument("--allow-shared", action="store_true")
     p.add_argument("--reuse-server", action="store_true", help="One independent baseline server and one CPU server for the matrix")
+    p.add_argument("--order-seed", type=int, default=None, help="Shuffle cells within independent baseline/CPU modes; requires --reuse-server")
     p.add_argument("--pinned", action=argparse.BooleanOptionalAction, default=True)
     p.add_argument("--out", type=pathlib.Path, default=None)
     a = p.parse_args()
@@ -224,6 +226,16 @@ def main():
     cells = ([(length, ratio) for ratio in a.ratios for length in a.lengths]
              if a.reuse_server else
              [(length, ratio) for length in a.lengths for ratio in a.ratios])
+    if a.order_seed is not None:
+        if not a.reuse_server:
+            p.error("--order-seed requires --reuse-server")
+        rng = random.Random(a.order_seed)
+        baseline_cells = [c for c in cells if c[1] == 0]
+        cpu_cells = [c for c in cells if c[1] != 0]
+        rng.shuffle(baseline_cells)
+        rng.shuffle(cpu_cells)
+        cells = baseline_cells + cpu_cells
+    (out / "cell_order.json").write_text(json.dumps(cells, indent=2))
     for length, ratio in cells:
         if max_pos and length + 1 > max_pos and not a.allow_extended_context:
             result.append(dict(length=length, requested_ratio=ratio,

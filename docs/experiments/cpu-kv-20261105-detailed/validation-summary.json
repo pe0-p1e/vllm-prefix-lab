@@ -1,0 +1,274 @@
+{
+  "all_loads_pass": true,
+  "measured_rows": 1200,
+  "readback_layers": 1484,
+  "host_buffer_checks": [
+    {
+      "bytes": 58720256,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 572522496,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 4585684992,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 117440512,
+      "requests": 46,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 704643072,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 4013162496,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 88080384,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 2293760000,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 2348810240,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 469762048,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 29360128,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 411041792,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 1761607680,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 1409286144,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 205520896,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 2818572288,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 587202560,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 352321536,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 1644167168,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 293601280,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 233046016,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 117440512,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 1409286144,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 1879048192,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 937689088,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 176160768,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 3288334336,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 234881024,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 704643072,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 3523215360,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 146800640,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 440401920,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 3440640000,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 880803840,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 176160768,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 469762048,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 352321536,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 234881024,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 939524096,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 1719402496,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 3756261376,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 58720256,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 1877213184,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 1146880000,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 469762048,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 822083584,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 2866282496,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 467927040,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 4299423744,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 220200960,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 939524096,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 234881024,
+      "requests": 23,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 1174405120,
+      "requests": 23,
+      "host_buffers_stable": true
+    }
+  ],
+  "raw_load_checks_count": 1242,
+  "unsupported_configurations": []
+}

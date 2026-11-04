@@ -1,0 +1,50 @@
+{
+  "plot_environment": {
+    "matplotlib": "3.11.2",
+    "numpy": "2.5.4"
+  },
+  "matrix_sha256": "ac8745bbac3794bb4f64ad3c80fd3bc7caebc2827e1b1c92b502568e6e3be4ea",
+  "n_valid_cells": 25,
+  "n_measurements": 250,
+  "method": "Unweighted OLS on cell medians: time_ms = intercept + slope * payload_GiB. No zero-hit points. Prediction only within observed payload range.",
+  "caveats": "Descriptive shared-GPU fit; samples/cells may be time-correlated. No causal inference, no pure compute inference, no 64K/128K extrapolation. Negative intercepts indicate limited-range empirical behavior, not physical negative overhead.",
+  "payload_range_gib": [
+    0.0546875,
+    3.498291015625
+  ],
+  "fits": {
+    "h2d_cuda_ms": {
+      "intercept_ms": 2.7146938716286755,
+      "slope_ms_per_gib": 72.92442744472052,
+      "r_squared": 0.9987730829652731,
+      "rmse_ms": 2.301462706140781,
+      "n_cells": 20,
+      "n_payload_sizes": 16,
+      "leave_one_payload_out_rmse_ms": 3.196773615561703,
+      "slope_equivalent_bandwidth_gib_s": 13.712826209818896
+    },
+    "scatter_cuda_ms": {
+      "intercept_ms": 0.17718418827598814,
+      "slope_ms_per_gib": 2.9828665085631223,
+      "r_squared": 0.9312717967261169,
+      "rmse_ms": 0.729658789314927,
+      "n_cells": 20,
+      "n_payload_sizes": 16,
+      "leave_one_payload_out_rmse_ms": 0.8199540826882344
+    }
+  },
+  "prefill_service_fit": {
+    "coefficients": {
+      "intercept_ms": 36.80412990634514,
+      "remaining_ktokens": 3.7246606540754073,
+      "causal_pairs_100m": 206.35231209034063,
+      "payload_gib": 96.83869298016623,
+      "cpu_load_indicator": 2.343508686013289
+    },
+    "r_squared": 0.9966167940091794,
+    "rmse_ms": 21.59215977493256,
+    "leave_one_length_out_rmse_ms": 79.53244555037757,
+    "features": "M=(L-H); causal_pairs=M*(2H+M+1)/2. Intercept plus M/1024, pairs/1e8, payload GiB, CPU-load indicator.",
+    "interpretation": "Empirical service-time regression including CPU loading. Coefficients are not measured GPU costs. Leave-one-length-out tests generalization, including boundary-length extrapolation within this native-context experiment. Never extrapolate to unsupported contexts."
+  }
+}

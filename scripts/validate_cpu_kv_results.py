@@ -12,9 +12,10 @@ from summarize_cpu_kv_live import quantile
 
 def main():
     root = pathlib.Path(sys.argv[1])
+    config = json.loads((root/"configuration.json").read_text()) if (root/"configuration.json").exists() else {}
     rows = list(csv.DictReader((root/'matrix.csv').open()))
     loads = [json.loads(p.read_text()) for p in root.rglob('kvload-*.json')]
-    # Files are numbered in worker execution order; each main cell has 13 requests.
+    # Files are numbered in worker execution order; payload changes start a new buffer group.
     ordered = [json.loads(p.read_text()) for p in sorted(root.rglob('kvload-*.json'))]
     host_groups = []
     for payload, group in itertools.groupby(ordered, key=lambda r: r['bytes']):
@@ -62,12 +63,12 @@ def main():
         'Exploratory shared-GPU measurements; contention prevents isolated performance claims.',
         'Qwen3-0.6B, vLLM 0.32.0, BF16, 28 layers, 8 KV heads, head dimension 128; 114688 bytes/token.',
         'Explicit token lists; APC disabled; one output token, temperature zero; eager execution; chunked prefill 8192.',
-        'Three warmups and ten measurements per main cell. Separate cache-disabled engine. CPU buffers reused within each cell.',
+        f"Warmups={config.get('args',{}).get('warmups','unknown')}; measured repetitions={config.get('args',{}).get('repeats','unknown')} per cell. Separate cache-disabled engine. CPU buffers reused within each cell.",
         'H is block aligned; the final block is recomputed at requested 100%. Synthetic KV has no semantic validity.',
         'H2D and scatter are separate CUDA-event intervals. Per-layer synchronization intentionally serializes loading.',
         'Prefill service time includes loading and scheduling overhead and is not pure GPU compute. TTFT/completion use client wall clock.',
         'No reliable GPU model-kernel or Attention-only timing was collected. CPU RSS and PCIe throughput unavailable.',
-        'Hardware CSV records whole-device utilization, including other users. P99 from n=10 is unstable.',
+        'Hardware CSV records whole-device utilization, including other users. Small-sample P99 is unstable.',
         'Native model context is 40960 without RoPE scaling. 64K and 128K are unsupported; no override or shorter substitution was used.',
         'Measured requests had no errors or preemptions. EngineDeadError after SIGTERM in the CPU server log belongs to shutdown after the last successful request.',
         f'Verified maximum input length: {max(l for l, ratio in grouped)} tokens.',

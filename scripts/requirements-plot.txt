@@ -1,0 +1,3 @@
+# Optional, isolated scientific plotting environment; not vLLM runtime dependencies.
+matplotlib==3.11.2
+numpy==2.5.4

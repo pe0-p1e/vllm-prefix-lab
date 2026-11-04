@@ -142,3 +142,40 @@ python3 scripts/validate_cpu_kv_results.py /absolute/run
 Native `max_position_embeddings=40960`, no RoPE scaling: 64K/128K are recorded as
 unsupported. A second GPU increases memory but does not extend the model's native
 positional limit. No unsupported override is used for reported measurements.
+
+## Fine native-context sweep and scientific plots
+
+The follow-up sweep keeps Qwen3-0.6B within native context and tests input lengths
+2048, 4096, 8192, 16384, 32768 and 40000. It uses ten requested hit ratios and
+20 measured repetitions after three warmups. A fixed seed shuffles cells within
+each independent mode; the baseline mode still runs first, so time drift remains
+a limitation. The maximum runtime context is 40001, unlike the first run's 32769.
+Keep the two runs separate when interpreting their results.
+
+```sh
+/state/partition/fyzhou/venvs/vllm/bin/python scripts/run_cpu_kv_matrix.py \
+  --gpu 1 --allow-shared --gpu-util .25 --reuse-server --order-seed 20261105 \
+  --lengths 2048 4096 8192 16384 32768 40000 \
+  --ratios 0 .125 .25 .375 .5 .625 .75 .875 .9375 1 --warmups 3 --repeats 20
+python3 scripts/summarize_cpu_kv_live.py /absolute/run/matrix.csv
+python3 scripts/validate_cpu_kv_results.py /absolute/run
+```
+
+`plot_cpu_kv_results.py` requires a separate matplotlib/NumPy plotting environment;
+`requirements-plot.txt` records the optional versions used. Do not install them
+into the vLLM runtime just to render figures. For example, with plotting packages
+isolated in `/tmp/cpu-kv-plot-deps`:
+
+```sh
+PYTHONPATH=/tmp/cpu-kv-plot-deps MPLCONFIGDIR=/tmp/cpu-kv-matplotlib \
+  /state/partition/fyzhou/venvs/vllm/bin/python scripts/plot_cpu_kv_results.py \
+  /absolute/run/matrix.csv --out docs/experiments/your-run/figures
+python3 scripts/publish_cpu_kv_report.py /absolute/run --out docs/experiments/your-run
+```
+
+Figures provide observed P10–P90 spread, not confidence intervals. Transport fits
+use cell medians and hold out all observations of each payload size together.
+The service regression uses remaining tokens, causal-attention-pair proxies,
+KV payload and a CPU-load indicator; it describes the whole service phase and
+never measures pure GPU compute. Its leave-one-length-out error is reported
+alongside training error. No fit is extrapolated to unsupported 64K/128K inputs.

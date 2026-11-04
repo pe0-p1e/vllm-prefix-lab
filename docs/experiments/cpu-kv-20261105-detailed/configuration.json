@@ -1,0 +1,57 @@
+{
+  "model": "/state/partition/model/Qwen3-0.6B",
+  "vllm_version": "0.32.0",
+  "gpu": 1,
+  "gpu_mem_used_mib": 16952,
+  "gpu_mem_total_mib": 24564,
+  "contended": true,
+  "model_max_position_embeddings": 40960,
+  "args": {
+    "lengths": [
+      2048,
+      4096,
+      8192,
+      16384,
+      32768,
+      40000
+    ],
+    "ratios": [
+      0.0,
+      0.125,
+      0.25,
+      0.375,
+      0.5,
+      0.625,
+      0.75,
+      0.875,
+      0.9375,
+      1.0
+    ],
+    "repeats": 20,
+    "warmups": 3,
+    "allow_extended_context": false,
+    "model_path": "/state/partition/model/Qwen3-0.6B",
+    "venv": "/state/partition/fyzhou/venvs/vllm",
+    "root": "/state/partition/fyzhou",
+    "gpu": 1,
+    "gpu_util": 0.25,
+    "block_size": 16,
+    "port": 18083,
+    "ready_timeout": 300,
+    "allow_shared": true,
+    "reuse_server": true,
+    "order_seed": 20261105,
+    "pinned": true,
+    "out": "/state/partition/fyzhou/results/cpu-kv-live/20261104T164508Z"
+  },
+  "python": "3.12.15",
+  "torch": "2.13.0+cu132",
+  "vllm": "0.32.0",
+  "runtime_max_model_len": 40001,
+  "gpu_kv_capacity_tokens": 40864,
+  "max_verified_input_tokens": 40000,
+  "source_sha256": {
+    "scripts/run_cpu_kv_matrix.py": "7c5d43549acfa8eb14c2e77a9c656f6bf8715c3ecff3662996d9069d46169e93",
+    "src/synthetic_cpu_connector.py": "0a6174bdfe314cc1181be71efc9ccad489fa6fc89dbaf7842a2214b62df05f0c"
+  }
+}

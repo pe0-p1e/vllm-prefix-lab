@@ -5,9 +5,10 @@ This is the **CPU KV only** experiment branch for Qwen3-0.6B on vLLM
 remaining Prefill and H2D transfer time. No content-matching APC and no
 automatic offloading. Synthetic K/V values are **not** semantically valid.
 
-**GPU validation and the 2K–32K experiment matrix are complete on 4090-02.**
-Read the [完整中文实验结果（全部 25 个配置、延迟、带宽、尾延迟与验证说明）](docs/experiments/cpu-kv-20261104/README.md).
-The results contain 250 measured requests after warmup. Shared-GPU contention and
+**GPU validation and native-context experiments through 40,000 tokens are complete on 4090-02.**
+Read the [细粒度实验与拟合：60 个配置、1200 次测量，最大 40,000 token](docs/experiments/cpu-kv-20261105-detailed/README.md),
+and the [首轮完整中文实验结果（全部 25 个配置、延迟、带宽、尾延迟与验证说明）](docs/experiments/cpu-kv-20261104/README.md).
+The first run contains 250 measured requests; the finer follow-up contains 1200. Shared-GPU contention and
 per-layer synchronization limit performance conclusions; 64K/128K exceed the
 model's native context range and are explicitly recorded as unsupported.
 
