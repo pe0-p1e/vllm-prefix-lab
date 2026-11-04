@@ -325,6 +325,19 @@ def main():
                                    mode=mode,status="failed",error=str(error)))
                 report(result,out/"matrix.csv")
                 print("FAILED",case,error,flush=True)
+                # The client sees only HTTP 500 when EngineCore dies.
+                # Surface the actual server traceback in console and files.
+                log.flush()
+                try:
+                    log_lines = (case / "server.log").read_text(
+                        errors="replace").splitlines()
+                    tail = "\\n".join(log_lines[-160:])
+                    (case / "failure-server-tail.txt").write_text(tail + "\\n")
+                    print("=== SERVER LOG TAIL (root cause) ===", flush=True)
+                    print(tail, flush=True)
+                    print("=== END SERVER LOG TAIL ===", flush=True)
+                except OSError as log_error:
+                    print("Unable to read server log:", log_error, flush=True)
                 # Preserve logs and abort: never silently drop failed cells.
                 raise
             finally:
