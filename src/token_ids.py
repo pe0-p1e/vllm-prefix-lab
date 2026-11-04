@@ -1,4 +1,5 @@
 """Exact-length token ID list generation. No tokenizer of prompt strings on wire."""
+from __future__ import annotations
 def make_ids(tokenizer, length: int, tag: int) -> list[int]:
     if length < 64:
         raise ValueError("length too short")
