@@ -52,6 +52,10 @@ class SyntheticCPUConnector(KVConnectorBase_V1):
         self.block_size = int(vllm_config.cache_config.block_size)
         self.forced_hit_tokens = int(extra.get("forced_hit_tokens", 0))
         self.pinned = bool(extra.get("pinned", True))
+        self.expected_layers = int(
+            getattr(vllm_config.model_config.hf_config,
+                    "num_hidden_layers", 0) or 0
+        )
         self.output_dir = pathlib.Path(
             extra.get("metrics_dir", "/state/partition/fyzhou/results/cpu-kv")
         )
@@ -111,6 +115,10 @@ class SyntheticCPUConnector(KVConnectorBase_V1):
                 layers.append((layer_name, kv))
         if not layers:
             raise RuntimeError("No registered KV tensors to populate")
+        if self.expected_layers and len(layers) != self.expected_layers:
+            raise RuntimeError(
+                f"Expected {self.expected_layers} KV layers, got {len(layers)}"
+            )
         # Store request-level metrics and per-layer timings in worker process.
         for load in metadata.loads:
             t0 = time.perf_counter_ns()
