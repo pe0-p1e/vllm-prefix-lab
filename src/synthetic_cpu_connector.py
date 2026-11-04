@@ -129,11 +129,16 @@ class SyntheticCPUConnector(KVConnectorBase_V1):
             for layer_name, dst in layers:
                 # vLLM v0.32.0 standard non-MLA cache:
                 # [num_blocks, 2, block_size, num_kv_heads, head_size].
-                if (dst.ndim != 5 or dst.shape[1] != 2
+                # vLLM standard views are [B, 2, block, hidden] (4D)
+                # or [B, 2, block, heads, dim] (5D), depending on backend.
+                # Both are block-major and support an index_copy on dim 0.
+                if (dst.ndim not in (4, 5) or dst.shape[1] != 2
                         or dst.shape[2] != self.block_size
                         or dst.device.type != "cuda"):
                     raise RuntimeError(
-                        f"Unsupported KV layout for {layer_name}: {tuple(dst.shape)}"
+                        f"Unsupported KV layout for {layer_name}: "
+                        f"shape={tuple(dst.shape)}, dtype={dst.dtype}, "
+                        f"device={dst.device}"
                     )
                 if max(load.block_ids) >= dst.shape[0]:
                     raise RuntimeError(f"KV block ID out of bounds: {layer_name}")
