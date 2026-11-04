@@ -1,31 +1,58 @@
-# vLLM Prefix Cache Lab
+# CPU KV Cache — Controlled Prefill Benchmark
 
-Controlled single-node vLLM automatic prefix caching (APC) latency experiments.
-**Active branch:** `exp/prefix-hit-matrix`. Old CPU KV/offload, mihomo, installation
-and overlap experiments remain in `exp/vllm-apc-baseline`, not in this tree.
+This is the **CPU KV only** experiment branch for Qwen3-0.6B on vLLM
+**0.32.0**. The goal is to measure forced CPU KV prefix length versus
+remaining Prefill and H2D transfer time. No content-matching APC and no
+automatic offloading. Synthetic K/V values are **not** semantically valid.
 
-## Layout
+**Integration code is committed but not GPU-validated on 4090-02.**
+Do not report results until the validation flags pass.
 
-- `src/prefix_lab.py`: exact-length token ID construction, HTTP client, metrics verification
-- `scripts/run.sh`: isolated vLLM server per (length, ratio, mode) cell
-- `scripts/summary.py`: aggregate validated JSON to CSV
-- `tests/test_prefix_lab.py`: CPU-only deterministic unit tests
-- `docs/EXPERIMENT.md`: protocol, limitations, commands, audit guide
+## Code layout
 
-## Quick start (4090-02)
+```text
+src/
+  synthetic_cpu_connector.py    # vLLM V1 forced host KV injection
+  token_ids.py                  # exact token-count input lists
+scripts/
+  run_cpu_kv_matrix.py          # launch, sample, verify, persist
+  summarize_cpu_kv_live.py      # report median, p95, p99 and bandwidth
+  bench_cpu_kv_transfer.py      # standalone contiguous H2D control
+  summary_cpu_kv_transfer.py
+tests/
+  test_cpu_kv_live.py
+  test_transfer_math.py
+docs/
+  CPU_KV_EXPERIMENT.md          # detailed runbook and acceptance criteria
+```
+
+## Test and run
 
 ```bash
-ssh 4090-02
 cd /state/partition/fyzhou/vllm-prefix-lab
 git fetch origin
 git switch exp/prefix-hit-matrix
 git pull --ff-only
+python3 -m compileall -q src scripts tests
 python3 -m unittest discover -s tests -v
-# Set vLLM executable and model path only if different from current lab:
-LAB_LENGTHS="2048 4096" LAB_RATIOS="0 0.5 0.75" LAB_REPEATS=3 bash scripts/run.sh
-cat "$(cat /state/partition/fyzhou/results/prefix-lab/LATEST)/matrix.csv"
+
+# Inspect nvidia-smi and select an authorized, sufficiently free GPU.
+# Small integration smoke test first:
+/state/partition/fyzhou/venvs/vllm/bin/python scripts/run_cpu_kv_matrix.py \
+  --gpu 0 --lengths 2048 --ratios 0 .5 1 --repeats 2
+
+# Full experiment (128K may be skipped by model/VRAM constraints):
+/state/partition/fyzhou/venvs/vllm/bin/python scripts/run_cpu_kv_matrix.py \
+  --gpu 0 \
+  --lengths 2048 4096 8192 16384 32768 65536 131072 \
+  --ratios 0 .25 .5 .75 1 --repeats 10 --warmups 3
+
+R=$(cat /state/partition/fyzhou/results/cpu-kv-live/LATEST)
+python3 scripts/summarize_cpu_kv_live.py "$R/matrix.csv" --out "$R/table.csv"
 ```
 
-Read `docs/EXPERIMENT.md` before running. No script installs dependencies,
-uses sudo, edits shell startup files, kills unrelated processes or downloads
-models. Model weights and runtime results do not belong in Git.
+See [the full protocol](docs/CPU_KV_EXPERIMENT.md) before treating any data
+as experimental evidence. All writes stay under
+`/state/partition/fyzhou`, with no sudo, no global CUDA edits and no
+unrelated GPU process termination. The original APC experiments remain
+available in `exp/vllm-apc-baseline`.
