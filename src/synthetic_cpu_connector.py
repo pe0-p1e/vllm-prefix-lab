@@ -5,7 +5,7 @@ prefix is populated with synthetic K/V from CPU DRAM before real residual
 prefill. Scheduler reports an external host hit. No hash lookup or offload.
 
 IMPORTANT: Only single-rank dense full-attention models with standard LBHNC
-[B,2,block,H,D] paged KV layers are supported. Fail closed otherwise.
+[B,H,block,2*D] paged KV layers are supported. Fail closed otherwise.
 """
 from __future__ import annotations
 
@@ -52,6 +52,7 @@ class SyntheticCPUConnector(KVConnectorBase_V1):
         self.block_size = int(vllm_config.cache_config.block_size)
         self.forced_hit_tokens = int(extra.get("forced_hit_tokens", 0))
         self.pinned = bool(extra.get("pinned", True))
+        self.hf_config = vllm_config.model_config.hf_config
         self.expected_layers = int(
             getattr(vllm_config.model_config.hf_config,
                     "num_hidden_layers", 0) or 0
@@ -79,7 +80,11 @@ class SyntheticCPUConnector(KVConnectorBase_V1):
         # At least one token must be computed to produce output.
         prompt_len = len(request.prompt_token_ids or [])
         upper = max(0, ((prompt_len - 1) // self.block_size) * self.block_size)
-        hit = min(self.forced_hit_tokens, upper)
+        extra = request.sampling_params.extra_args or {}
+        forced = int(extra.get("synthetic_cpu_hit_tokens", self.forced_hit_tokens))
+        if forced < 0 or forced % self.block_size:
+            raise ValueError("Request hit tokens must be block aligned")
+        hit = min(forced, upper)
         if num_computed_tokens > 0:
             return 0, False
         return hit, False
@@ -104,15 +109,14 @@ class SyntheticCPUConnector(KVConnectorBase_V1):
                                repr(self._pending))
         return metadata
 
+    def register_kv_caches(self, kv_caches):
+        self._registered_caches = kv_caches
+
     def start_load_kv(self, forward_context, **kwargs: Any):
         metadata = self._get_connector_metadata()
         if not isinstance(metadata, LoadMetadata) or not metadata.loads:
             return
-        layers = []
-        for layer_name, layer in forward_context.no_compile_layers.items():
-            kv = getattr(layer, "kv_cache", None)
-            if kv is not None and isinstance(kv, torch.Tensor) and kv.numel():
-                layers.append((layer_name, kv))
+        layers = list(self._registered_caches.items())
         if not layers:
             raise RuntimeError("No registered KV tensors to populate")
         if self.expected_layers and len(layers) != self.expected_layers:
@@ -127,30 +131,27 @@ class SyntheticCPUConnector(KVConnectorBase_V1):
             records = []
             total_bytes = 0
             for layer_name, dst in layers:
-                # vLLM v0.32.0 standard non-MLA cache:
-                # [num_blocks, 2, block_size, num_kv_heads, head_size].
-                # vLLM standard views are [B, 2, block, hidden] (4D)
-                # or [B, 2, block, heads, dim] (5D), depending on backend.
-                # Both are block-major and support an index_copy on dim 0.
-                if (dst.ndim not in (4, 5) or dst.shape[1] != 2
-                        or dst.shape[2] != self.block_size
+                expected = (self.hf_config.num_key_value_heads,
+                            self.block_size, 2 * self.hf_config.head_dim)
+                if (dst.ndim != 4 or tuple(dst.shape[1:]) != expected
                         or dst.device.type != "cuda"):
-                    raise RuntimeError(
-                        f"Unsupported KV layout for {layer_name}: "
-                        f"shape={tuple(dst.shape)}, dtype={dst.dtype}, "
-                        f"device={dst.device}"
-                    )
-                if max(load.block_ids) >= dst.shape[0]:
-                    raise RuntimeError(f"KV block ID out of bounds: {layer_name}")
+                    raise RuntimeError(f"Unsupported live KV: {layer_name} {dst.shape}")
+                if (len(set(load.block_ids)) != n_blocks
+                        or min(load.block_ids) < 0
+                        or max(load.block_ids) >= dst.shape[0]):
+                    raise RuntimeError(f"Invalid GPU block mapping: {load.block_ids}")
                 shape = (n_blocks, *dst.shape[1:])
                 prep0 = time.perf_counter_ns()
+                allocation_ms = 0.0
                 host = self._cpu_layers.get(layer_name)
-                if host is None or tuple(host.shape) != shape:
+                newly_prepared = host is None or tuple(host.shape) != shape
+                if newly_prepared:
                     host = torch.empty(shape, dtype=dst.dtype, device="cpu",
                                        pin_memory=self.pinned)
                     # Initialize once: measured requests reuse the same CPU KV.
                     host.fill_(0.125)
                     self._cpu_layers[layer_name] = host
+                    allocation_ms = (time.perf_counter_ns()-prep0)/1e6
                 index = block_ids_cpu.to(dst.device, non_blocking=False)
                 stage = torch.empty(shape, dtype=dst.dtype, device=dst.device)
                 with gpu_sync_allowed():
@@ -177,11 +178,26 @@ class SyntheticCPUConnector(KVConnectorBase_V1):
                                     prepare_ms=prep_ms, h2d_cuda_ms=h2d_ms,
                                     scatter_cuda_ms=scatter_ms,
                                     load_wall_ms=wall_ms))
+                checked = newly_prepared
+                if checked:
+                    with gpu_sync_allowed():
+                        actual = dst.index_select(0, index).cpu()
+                        assert torch.equal(actual, host), layer_name
+                records[-1].update(shape=list(dst.shape), stride=list(dst.stride()),
+                                   destination_ptr=dst.data_ptr(), host_ptr=host.data_ptr(),
+                                   readback_verified=checked, dtype=str(dst.dtype),
+                                   cpu_allocation_ms=allocation_ms,
+                                   stage_bytes=stage.numel()*stage.element_size(),
+                                   block_ids=list(load.block_ids))
                 del index, stage
+            expected_bytes = (load.tokens * self.expected_layers * 2
+                              * self.hf_config.num_key_value_heads
+                              * self.hf_config.head_dim * layers[0][1].element_size())
+            assert total_bytes == expected_bytes, (total_bytes, expected_bytes)
             self._counter += 1
             result = dict(
                 kind="synthetic_cpu_kv_live_vllm", request_id=load.request_id,
-                requested_hit_tokens=self.forced_hit_tokens,
+                requested_hit_tokens=load.tokens,
                 injected_hit_tokens=load.tokens, block_size=self.block_size,
                 gpu_block_count=n_blocks, layers=len(layers),
                 bytes=total_bytes, pinned=self.pinned,
@@ -190,6 +206,8 @@ class SyntheticCPUConnector(KVConnectorBase_V1):
                 sum_layer_scatter_cuda_ms=sum(x["scatter_cuda_ms"] for x in records),
                 sum_layer_prepare_ms=sum(x["prepare_ms"] for x in records),
                 gpu_peak_allocated_bytes=torch.cuda.max_memory_allocated(),
+                gpu_peak_reserved_bytes=torch.cuda.max_memory_reserved(),
+                cpu_rss_bytes=int(pathlib.Path("/proc/self/statm").read_text().split()[1])*os.sysconf("SC_PAGE_SIZE"),
                 layer_metrics=records)
             filename = self.output_dir / (
                 f"kvload-{os.getpid()}-{self._counter:05d}.json")

@@ -106,3 +106,39 @@ unable to run 128K on the present 24GB device.
    unexpected preemptions. Raw per-layer files retained.
 6. Repeat with an idle GPU; capture raw server logs and setup.json.
    One success on a shared GPU does not establish reproducibility.
+
+## Installed 0.32.0 FlashAttention correction (2026-11-04)
+
+The original 50% crash was a layout assertion, not an EngineCore scheduling
+failure. Installed FlashAttention consumes `[blocks, kv_heads, block_size, 2*head_dim]`
+and splits the final dimension after transposing heads/tokens. Accepting an
+arbitrary 4D tensor with dimension 1 equal to 2 was incorrect. This connector now
+uses `register_kv_caches` and validates the actual model dimensions. Each newly
+prepared CPU source is fully read back from all selected GPU blocks during warmup;
+measured requests reuse the CPU allocations and perform fresh copies and scatter.
+All loads are synchronous before model forward; per-layer event synchronization
+makes `wait_for_layer_load` a no-op. Eager mode is an explicit experimental control,
+not evidence that CUDA graphs caused the original failure.
+
+Run GPU injection checks explicitly (normal unit discovery skips them):
+
+```sh
+CUDA_VISIBLE_DEVICES=1 CPU_KV_GPU_TEST=1 /state/partition/fyzhou/venvs/vllm/bin/python -m unittest discover -s tests -p test_synthetic_injection.py
+```
+
+`--reuse-server` uses one cache-disabled engine and one CPU engine, with a fixed
+maximum supported context across all cells. CPU hit counts are conveyed through
+`vllm_xargs.synthetic_cpu_hit_tokens`, validated by the scheduler connector; each
+cell still gets its own warmups. CPU buffers persist across requests within each
+cell. This avoids repeated server initialization while retaining an independent
+baseline. Do not compare shared-GPU timing as an isolated hardware benchmark.
+
+```sh
+/state/partition/fyzhou/venvs/vllm/bin/python scripts/run_cpu_kv_matrix.py --gpu 1 --gpu-util .25 --allow-shared --reuse-server --warmups 3 --repeats 10
+python3 scripts/summarize_cpu_kv_live.py /absolute/run/matrix.csv
+python3 scripts/validate_cpu_kv_results.py /absolute/run
+```
+
+Native `max_position_embeddings=40960`, no RoPE scaling: 64K/128K are recorded as
+unsupported. A second GPU increases memory but does not extend the model's native
+positional limit. No unsupported override is used for reported measurements.

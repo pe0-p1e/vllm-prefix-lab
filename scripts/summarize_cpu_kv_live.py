@@ -34,7 +34,7 @@ def main():
                 continue
             key=(int(row["length"]),float(row["requested_ratio"]),row["mode"])
             grouped[key].append(row)
-    headers=["input_tokens","requested_cpu_hit_ratio","actual_cpu_hit_tokens",
+    headers=["input_tokens","requested_cpu_hit_ratio","actual_cpu_hit_tokens","actual_cpu_hit_ratio","e2e_median_ms",
              "recomputed_prefill_tokens","mode","repeats",
              "prefill_service_median_ms","prefill_service_p95_ms",
              "ttft_median_ms","ttft_p95_ms","ttft_p99_ms",
@@ -57,6 +57,8 @@ def main():
             writer.writerow(dict(
                 input_tokens=length,requested_cpu_hit_ratio=ratio,
                 actual_cpu_hit_tokens=median(rows,"injected_hit_tokens"),
+                actual_cpu_hit_ratio=median(rows,"injected_hit_tokens")/length,
+                e2e_median_ms=median(rows,"e2e_ms"),
                 recomputed_prefill_tokens=median(rows,"actual_prefill_kv_tokens"),
                 mode=mode,repeats=len(rows),
                 prefill_service_median_ms=statistics.median(prefill),
@@ -79,8 +81,9 @@ def main():
                                  requested_cpu_hit_ratio=x.get("requested_ratio",""),
                                  mode=x.get("mode",""),status=x["status"]))
     print("Table:",output)
-    if failed:
-        raise SystemExit(f"{len(failed)} failed/unverified rows; table retained with status")
+    invalid = [r for r in failed if r["status"] != "unsupported_model_context"]
+    if invalid:
+        raise SystemExit(f"{len(invalid)} failed/unverified rows; table retained with status")
 
 
 if __name__ == "__main__":

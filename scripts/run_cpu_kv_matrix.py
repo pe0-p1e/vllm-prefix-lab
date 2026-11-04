@@ -59,10 +59,14 @@ def metrics(opener, base):
         return metric_values(resp.read().decode())
 
 
-def sample_request(opener, base, token_ids):
+def sample_request(opener, base, token_ids, hit=None):
     payload = json.dumps(dict(model="prefix-lab", prompt=token_ids,
                               max_tokens=1, temperature=0,
                               ignore_eos=True, stream=True)).encode()
+    if hit is not None:
+        obj = json.loads(payload)
+        obj["vllm_xargs"] = {"synthetic_cpu_hit_tokens": hit}
+        payload = json.dumps(obj).encode()
     req = urllib.request.Request(
         base + "/v1/completions", data=payload,
         method="POST", headers={"Content-Type": "application/json"})
@@ -132,8 +136,8 @@ def main():
     p.add_argument("--lengths", nargs="+", type=int,
                    default=[2048,4096,8192,16384,32768,65536,131072])
     p.add_argument("--ratios", nargs="+", type=float, default=[0,.25,.5,.75,1])
-    p.add_argument("--repeats", type=int, default=5)
-    p.add_argument("--warmups", type=int, default=2)
+    p.add_argument("--repeats", type=int, default=10)
+    p.add_argument("--warmups", type=int, default=3)
     p.add_argument("--allow-extended-context", action="store_true",
                    help="Experimental: permit context beyond model config; no correctness guarantee")
     p.add_argument("--model-path", default="/state/partition/model/Qwen3-0.6B")
@@ -145,6 +149,7 @@ def main():
     p.add_argument("--port", type=int, default=18083)
     p.add_argument("--ready-timeout", type=int, default=300)
     p.add_argument("--allow-shared", action="store_true")
+    p.add_argument("--reuse-server", action="store_true", help="One independent baseline server and one CPU server for the matrix")
     p.add_argument("--pinned", action=argparse.BooleanOptionalAction, default=True)
     p.add_argument("--out", type=pathlib.Path, default=None)
     a = p.parse_args()
@@ -186,7 +191,7 @@ def main():
         gpu_mem_used_mib=used, gpu_mem_total_mib=total,
         contended=used > 512, model_max_position_embeddings=max_pos,
         args=vars(a) | {"out": str(out)})
-    (out / "setup.json").write_text(json.dumps(setup, indent=2, default=str))
+    (out / "configuration.json").write_text(json.dumps(setup, indent=2, default=str))
     env = os.environ.copy()
     env.update(CUDA_VISIBLE_DEVICES=str(a.gpu),
                VLLM_USE_FLASHINFER_SAMPLER="0",
@@ -208,141 +213,172 @@ def main():
         env.pop(key, None)
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     base_url = f"http://127.0.0.1:{a.port}"
+    hardware_file = (out / "hardware.csv").open("w")
+    sampler = subprocess.Popen(["nvidia-smi", "-i", str(a.gpu),
+        "--query-gpu=timestamp,index,memory.used,utilization.gpu,utilization.memory,power.draw,clocks.sm,pcie.link.gen.current,pcie.link.width.current",
+        "--format=csv", "--loop=2"], stdout=hardware_file, stderr=subprocess.DEVNULL)
     result = []
-    for length in a.lengths:
+    process = None
+    log = None
+    current_mode = None
+    cells = ([(length, ratio) for ratio in a.ratios for length in a.lengths]
+             if a.reuse_server else
+             [(length, ratio) for length in a.lengths for ratio in a.ratios])
+    for length, ratio in cells:
         if max_pos and length + 1 > max_pos and not a.allow_extended_context:
-            result.append(dict(length=length, status="unsupported_model_context",
+            result.append(dict(length=length, requested_ratio=ratio,
+                               status="unsupported_model_context",
                                error=f"max_position_embeddings={max_pos}"))
             continue
-        for ratio in a.ratios:
-            hit = min((int(length*ratio)//a.block_size)*a.block_size,
-                      ((length-1)//a.block_size)*a.block_size)
-            mode = "cpu" if hit else "disable"
-            case = out / f"L{length}_R{ratio:g}"
-            case.mkdir()
-            try:
-                with socket.create_connection(("127.0.0.1", a.port), timeout=.5):
-                    pass
-                raise RuntimeError("Port already occupied by another process")
-            except (ConnectionRefusedError, TimeoutError):
-                pass
-            extra = dict(forced_hit_tokens=hit, pinned=a.pinned,
-                         metrics_dir=str(case))
-            transfer = dict(kv_connector="SyntheticCPUConnector",
-                            kv_connector_module_path="src.synthetic_cpu_connector",
-                            kv_role="kv_both", kv_connector_extra_config=extra)
-            cmd = [str(vllm), "serve", a.model_path,
-                   "--served-model-name","prefix-lab",
-                   "--host","127.0.0.1","--port",str(a.port),
-                   "--max-model-len",str(length+1),
-                   "--gpu-memory-utilization",str(a.gpu_util),
-                   "--block-size",str(a.block_size),
-                   "--max-num-batched-tokens","8192",
-                   "--disable-hybrid-kv-cache-manager",
-                   "--no-enable-prefix-caching"]
-            if hit:
-                cmd += ["--kv-transfer-config",json.dumps(transfer)]
-            (case/"command.json").write_text(json.dumps(cmd,indent=2))
+        hit = min((int(length*ratio)//a.block_size)*a.block_size,
+                  ((length-1)//a.block_size)*a.block_size)
+        mode = "cpu" if hit else "disable"
+        case = out / f"L{length}_R{ratio:g}"
+        case.mkdir()
+        if process is not None and (not a.reuse_server or current_mode != mode):
+            shutdown(process)
+            log.close()
             process = None
-            log = (case/"server.log").open("w")
-            try:
+        try:
+            if process is not None:
+                raise ConnectionRefusedError()
+            with socket.create_connection(("127.0.0.1", a.port), timeout=.5):
+                pass
+            raise RuntimeError("Port already occupied by another process")
+        except (ConnectionRefusedError, TimeoutError):
+            pass
+        extra = dict(forced_hit_tokens=hit, pinned=a.pinned,
+                     metrics_dir=str(out / "loads") if a.reuse_server else str(case))
+        transfer = dict(kv_connector="SyntheticCPUConnector",
+                        kv_connector_module_path="src.synthetic_cpu_connector",
+                        kv_role="kv_both", kv_connector_extra_config=extra)
+        cmd = [str(vllm), "serve", a.model_path,
+               "--served-model-name","prefix-lab",
+               "--host","127.0.0.1","--port",str(a.port),
+               "--max-model-len",str(max(x for x in a.lengths if x+1 <= max_pos)+1) if a.reuse_server else str(length+1),
+               "--gpu-memory-utilization",str(a.gpu_util),
+               "--block-size",str(a.block_size),
+               "--max-num-batched-tokens","8192",
+               "--max-num-seqs","1",
+               "--disable-hybrid-kv-cache-manager",
+               "--no-enable-prefix-caching", "--enforce-eager"]
+        if hit:
+            cmd += ["--kv-transfer-config",json.dumps(transfer)]
+        (case/"command.json").write_text(json.dumps(cmd,indent=2))
+        load_dir = out / "loads" if a.reuse_server else case
+        load_dir.mkdir(exist_ok=True)
+        try:
+            if process is None:
+                log = ((out / f"server-{mode}.log") if a.reuse_server else (case / "server.log")).open("w")
                 process = subprocess.Popen(cmd, cwd=repo, env=env, stdout=log,
                                            stderr=subprocess.STDOUT,
                                            start_new_session=True)
+                current_mode = mode
                 wait_ready(opener, base_url, process, a.ready_timeout)
-                for repeat in range(max(a.warmups, 1)+a.repeats):
-                    source = make_ids(tok, length, 900000+repeat)
-                    # Exact list length; raw token IDs passed to OpenAI API.
-                    assert len(source) == length
-                    prior = metrics(opener,base_url)
-                    files_before = set(case.glob("kvload-*.json"))
-                    ttft,e2e = sample_request(opener,base_url,source)
+            for repeat in range(max(a.warmups, 1)+a.repeats):
+                source = make_ids(tok, length, 900000+repeat)
+                # Exact list length; raw token IDs passed to OpenAI API.
+                assert len(source) == length
+                prior = metrics(opener,base_url)
+                files_before = set(load_dir.glob("kvload-*.json"))
+                ttft,e2e = sample_request(opener,base_url,source,hit if a.reuse_server and hit else None)
+                after = metrics(opener,base_url)
+                for _ in range(30):
+                    if (after.get(METRICS["prefill_count"],0) >
+                            prior.get(METRICS["prefill_count"],0)):
+                        break
+                    time.sleep(.1)
                     after = metrics(opener,base_url)
-                    for _ in range(30):
-                        if (after.get(METRICS["prefill_count"],0) >
-                                prior.get(METRICS["prefill_count"],0)):
-                            break
-                        time.sleep(.1)
-                        after = metrics(opener,base_url)
-                    delta = {k:after.get(k,0)-prior.get(k,0)
-                             for k in METRICS.values()
-                             if k in prior and k in after}
-                    new_files = set(case.glob("kvload-*.json"))-files_before
-                    load = None
-                    if hit:
-                        if len(new_files)!=1:
-                            raise RuntimeError(
-                                f"Expected one CPU KV injection, got {len(new_files)}")
-                        load = json.loads(next(iter(new_files)).read_text())
-                    host = delta.get(METRICS["host_cached_tokens"],None)
-                    prefill = delta.get(METRICS["prefill_ms"],None)
-                    computed = delta.get(METRICS["prefill_computed_tokens"],None)
-                    injected = load["injected_hit_tokens"] if load else 0
-                    valid = (injected == hit and
-                             after.get(METRICS["prefill_count"],0) >
-                             prior.get(METRICS["prefill_count"],0) and
-                             computed is not None and
-                             abs(computed-(length-hit)) <= a.block_size and
-                             (hit == 0 or
-                              (host is not None and abs(host-hit)<=a.block_size)) and
-                             prefill is not None)
-                    row = dict(length=length,requested_ratio=ratio,
-                               mode=mode,repeat=repeat-max(a.warmups, 1),
-                               requested_hit_tokens=hit,
-                               actual_host_hit_tokens=host,
-                               injected_hit_tokens=injected,
-                               actual_prefill_kv_tokens=computed,
-                               prefill_service_ms=prefill*1000 if prefill is not None else None,
-                               queue_ms=1000*delta[METRICS["queue_ms"]]
-                               if METRICS["queue_ms"] in delta else None,
-                               inference_ms=1000*delta[METRICS["inference_ms"]]
-                               if METRICS["inference_ms"] in delta else None,
-                               decode_ms=1000*delta[METRICS["decode_ms"]]
-                               if METRICS["decode_ms"] in delta else None,
-                               server_ttft_ms=1000*delta[METRICS["server_ttft_ms"]]
-                               if METRICS["server_ttft_ms"] in delta else None,
-                               preemptions=delta.get(METRICS["preemptions"]),
-                               ttft_ms=ttft,e2e_ms=e2e,
-                               h2d_cuda_ms=load["sum_layer_h2d_cuda_ms"] if load else 0,
-                               scatter_cuda_ms=load["sum_layer_scatter_cuda_ms"] if load else 0,
-                               worker_load_wall_ms=load["total_worker_load_wall_ms"] if load else 0,
-                               worker_prepare_ms=load["sum_layer_prepare_ms"] if load else 0,
-                               kv_bytes=load["bytes"] if load else 0,
-                               h2d_gib_per_s=(load["bytes"]/2**30)/
-                               (load["sum_layer_h2d_cuda_ms"]/1000)
-                               if load and load["sum_layer_h2d_cuda_ms"] else None,
-                               peak_gpu_allocated_bytes=load["gpu_peak_allocated_bytes"]
-                               if load else None,
-                               verified=valid,status="measured" if valid else "unverified")
-                    if repeat >= max(a.warmups, 1):
-                        result.append(row)
-                        report(result,out/"matrix.csv")
-                    print(json.dumps(row),flush=True)
-                    if not valid:
-                        raise RuntimeError("KV injection/host metric mismatch")
-            except Exception as error:
-                result.append(dict(length=length,requested_ratio=ratio,
-                                   mode=mode,status="failed",error=str(error)))
-                report(result,out/"matrix.csv")
-                print("FAILED",case,error,flush=True)
-                # The client sees only HTTP 500 when EngineCore dies.
-                # Surface the actual server traceback in console and files.
-                log.flush()
-                try:
-                    log_lines = (case / "server.log").read_text(
-                        errors="replace").splitlines()
-                    tail = "\\n".join(log_lines[-160:])
-                    (case / "failure-server-tail.txt").write_text(tail + "\\n")
-                    print("=== SERVER LOG TAIL (root cause) ===", flush=True)
-                    print(tail, flush=True)
-                    print("=== END SERVER LOG TAIL ===", flush=True)
-                except OSError as log_error:
-                    print("Unable to read server log:", log_error, flush=True)
-                # Preserve logs and abort: never silently drop failed cells.
-                raise
-            finally:
+                delta = {k:after.get(k,0)-prior.get(k,0)
+                         for k in METRICS.values()
+                         if k in prior and k in after}
+                new_files = set(load_dir.glob("kvload-*.json"))-files_before
+                load = None
+                if hit:
+                    if len(new_files)!=1:
+                        raise RuntimeError(
+                            f"Expected one CPU KV injection, got {len(new_files)}")
+                    load = json.loads(next(iter(new_files)).read_text())
+                host = delta.get(METRICS["host_cached_tokens"],None)
+                prefill = delta.get(METRICS["prefill_ms"],None)
+                computed = delta.get(METRICS["prefill_computed_tokens"],None)
+                injected = load["injected_hit_tokens"] if load else 0
+                valid = (injected == hit and
+                         after.get(METRICS["prefill_count"],0) >
+                         prior.get(METRICS["prefill_count"],0) and
+                         computed is not None and
+                         computed == length-hit and
+                         (hit == 0 or
+                          (host is not None and host == hit)) and
+                         prefill is not None)
+                row = dict(length=length,requested_ratio=ratio,
+                           mode=mode,repeat=repeat-max(a.warmups, 1),
+                           requested_hit_tokens=hit,
+                           actual_host_hit_tokens=host,
+                           injected_hit_tokens=injected,
+                           actual_prefill_kv_tokens=computed,
+                           prefill_service_ms=prefill*1000 if prefill is not None else None,
+                           queue_ms=1000*delta[METRICS["queue_ms"]]
+                           if METRICS["queue_ms"] in delta else None,
+                           inference_ms=1000*delta[METRICS["inference_ms"]]
+                           if METRICS["inference_ms"] in delta else None,
+                           decode_ms=1000*delta[METRICS["decode_ms"]]
+                           if METRICS["decode_ms"] in delta else None,
+                           server_ttft_ms=1000*delta[METRICS["server_ttft_ms"]]
+                           if METRICS["server_ttft_ms"] in delta else None,
+                           preemptions=delta.get(METRICS["preemptions"]),
+                           ttft_ms=ttft,e2e_ms=e2e,
+                           h2d_cuda_ms=load["sum_layer_h2d_cuda_ms"] if load else 0,
+                           scatter_cuda_ms=load["sum_layer_scatter_cuda_ms"] if load else 0,
+                           worker_load_wall_ms=load["total_worker_load_wall_ms"] if load else 0,
+                           worker_prepare_ms=load["sum_layer_prepare_ms"] if load else 0,
+                           kv_bytes=load["bytes"] if load else 0,
+                           h2d_gib_per_s=(load["bytes"]/2**30)/
+                           (load["sum_layer_h2d_cuda_ms"]/1000)
+                           if load and load["sum_layer_h2d_cuda_ms"] else None,
+                           peak_gpu_allocated_bytes=load["gpu_peak_allocated_bytes"]
+                           if load else None,
+                           verified=valid,status="measured" if valid else "unverified")
+                if repeat >= max(a.warmups, 1):
+                    result.append(row)
+                    report(result,out/"matrix.csv")
+                print(json.dumps(row),flush=True)
+                if not valid:
+                    raise RuntimeError("KV injection/host metric mismatch")
+        except Exception as error:
+            result.append(dict(length=length,requested_ratio=ratio,
+                               mode=mode,status="failed",error=str(error)))
+            report(result,out/"matrix.csv")
+            print("FAILED",case,error,flush=True)
+            # The client sees only HTTP 500 when EngineCore dies.
+            # Surface the actual server traceback in console and files.
+            log.flush()
+            try:
+                log_lines = ((out / f"server-{mode}.log") if a.reuse_server else (case / "server.log")).read_text(
+                    errors="replace").splitlines()
+                tail = "\n".join(log_lines[-160:])
+                (case / "failure-server-tail.txt").write_text(tail + "\n")
+                print("=== SERVER LOG TAIL (root cause) ===", flush=True)
+                print(tail, flush=True)
+                print("=== END SERVER LOG TAIL ===", flush=True)
+            except OSError as log_error:
+                print("Unable to read server log:", log_error, flush=True)
+            shutdown(process)
+            sampler.terminate()
+            hardware_file.close()
+            # Preserve logs and abort: never silently drop failed cells.
+            raise
+        finally:
+            if not a.reuse_server:
                 shutdown(process)
                 log.close()
+                process = None
+    shutdown(process)
+    if log is not None:
+        log.close()
+    sampler.terminate()
+    sampler.wait()
+    hardware_file.close()
     report(result,out/"matrix.csv")
     print("Results:",out)
 
