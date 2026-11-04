@@ -26,6 +26,25 @@ docs/
   CPU_KV_EXPERIMENT.md          # detailed runbook and acceptance criteria
 ```
 
+## Codex on 4090-02 (only this process uses Clash)
+
+The launcher is part of this branch and does **not** edit your shell profile:
+
+```bash
+cd /state/partition/fyzhou/vllm-prefix-lab
+bash scripts/codex.sh                   # new Codex session
+bash scripts/codex.sh resume            # choose existing session
+bash scripts/codex.sh resume --last     # resume last session
+CLASH_PORT=7890 bash scripts/codex.sh resume  # explicit local proxy port
+```
+
+It uses `/state/partition/fyzhou/tools/bin/codex`, auto-detects a
+listening Mihomo/Clash port (17890, 7890, 7897), preserves existing
+`CODEX_HOME` or `~/.codex` login state and passes all arguments unchanged.
+It **does not** install Codex or fix a missing
+`codex-code-mode-host` executable; if that binary is missing, repair the
+partition-local `install.sh` installation before starting a new session.
+
 ## Test and run
 
 ```bash
