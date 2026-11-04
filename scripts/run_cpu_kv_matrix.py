@@ -26,6 +26,10 @@ METRICS = {
     "prefill_computed_tokens": "vllm:request_prefill_kv_computed_tokens_sum",
     "host_cached_tokens": "vllm:prompt_tokens_cached_by_source_total",
     "queue_ms": "vllm:request_queue_time_seconds_sum",
+    "inference_ms": "vllm:request_inference_time_seconds_sum",
+    "decode_ms": "vllm:request_decode_time_seconds_sum",
+    "server_ttft_ms": "vllm:time_to_first_token_seconds_sum",
+    "preemptions": "vllm:request_num_preemptions_sum",
 }
 
 
@@ -110,7 +114,8 @@ def shutdown(process):
 def report(rows, output):
     fields = ["length", "requested_ratio", "mode", "repeat", "requested_hit_tokens",
               "actual_host_hit_tokens", "injected_hit_tokens", "actual_prefill_kv_tokens",
-              "prefill_service_ms", "ttft_ms", "e2e_ms", "h2d_cuda_ms",
+              "prefill_service_ms", "queue_ms", "inference_ms", "decode_ms",
+              "server_ttft_ms", "preemptions", "ttft_ms", "e2e_ms", "h2d_cuda_ms",
               "scatter_cuda_ms", "worker_load_wall_ms", "worker_prepare_ms",
               "kv_bytes", "h2d_gib_per_s", "peak_gpu_allocated_bytes",
               "verified", "status", "error"]
@@ -278,6 +283,15 @@ def main():
                                injected_hit_tokens=injected,
                                actual_prefill_kv_tokens=computed,
                                prefill_service_ms=prefill*1000 if prefill is not None else None,
+                               queue_ms=1000*delta[METRICS["queue_ms"]]
+                               if METRICS["queue_ms"] in delta else None,
+                               inference_ms=1000*delta[METRICS["inference_ms"]]
+                               if METRICS["inference_ms"] in delta else None,
+                               decode_ms=1000*delta[METRICS["decode_ms"]]
+                               if METRICS["decode_ms"] in delta else None,
+                               server_ttft_ms=1000*delta[METRICS["server_ttft_ms"]]
+                               if METRICS["server_ttft_ms"] in delta else None,
+                               preemptions=delta.get(METRICS["preemptions"]),
                                ttft_ms=ttft,e2e_ms=e2e,
                                h2d_cuda_ms=load["sum_layer_h2d_cuda_ms"] if load else 0,
                                scatter_cuda_ms=load["sum_layer_scatter_cuda_ms"] if load else 0,
