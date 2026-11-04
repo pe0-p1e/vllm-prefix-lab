@@ -127,6 +127,8 @@ def main():
     p.add_argument("--ratios", nargs="+", type=float, default=[0,.25,.5,.75,1])
     p.add_argument("--repeats", type=int, default=5)
     p.add_argument("--warmups", type=int, default=2)
+    p.add_argument("--allow-extended-context", action="store_true",
+                   help="Experimental: permit context beyond model config; no correctness guarantee")
     p.add_argument("--model-path", default="/state/partition/model/Qwen3-0.6B")
     p.add_argument("--venv", default="/state/partition/fyzhou/venvs/vllm")
     p.add_argument("--root", default="/state/partition/fyzhou")
@@ -189,6 +191,11 @@ def main():
                CUDA_CACHE_PATH=str(root/"cache/cuda"),
                TMPDIR=str(root/"tmp"),
                PYTHONPATH=str(repo)+os.pathsep+env.get("PYTHONPATH",""))
+    if a.allow_extended_context:
+        # For synthetic benchmark only: data semantics are deliberately invalid.
+        # vLLM validates max_model_len by default; this override allows the
+        # explicit experiment to attempt longer positions.
+        env["VLLM_ALLOW_LONG_MAX_MODEL_LEN"] = "1"
     for key in ["HTTP_PROXY","HTTPS_PROXY","ALL_PROXY","http_proxy","https_proxy",
                 "all_proxy"]:
         env.pop(key, None)
@@ -196,7 +203,7 @@ def main():
     base_url = f"http://127.0.0.1:{a.port}"
     result = []
     for length in a.lengths:
-        if max_pos and length > max_pos:
+        if max_pos and length > max_pos and not a.allow_extended_context:
             result.append(dict(length=length, status="unsupported_model_context",
                                error=f"max_position_embeddings={max_pos}"))
             continue
@@ -235,7 +242,7 @@ def main():
                                            stderr=subprocess.STDOUT,
                                            start_new_session=True)
                 wait_ready(opener, base_url, process, a.ready_timeout)
-                for repeat in range(a.warmups+a.repeats):
+                for repeat in range(max(a.warmups, 1)+a.repeats):
                     source = make_ids(tok, length, 900000+repeat)
                     # Exact list length; raw token IDs passed to OpenAI API.
                     assert len(source) == length
@@ -257,12 +264,14 @@ def main():
                     prefill = delta.get(METRICS["prefill_ms"],None)
                     computed = delta.get(METRICS["prefill_computed_tokens"],None)
                     injected = load["injected_hit_tokens"] if load else 0
-                    valid = (injected==hit and
-                             (host is None or abs(host-hit)<=a.block_size) and
-                             (computed is None or
-                              abs(computed-(length-hit))<=a.block_size))
+                    valid = (injected == hit and
+                             computed is not None and
+                             abs(computed-(length-hit)) <= a.block_size and
+                             (hit == 0 or
+                              (host is not None and abs(host-hit)<=a.block_size)) and
+                             prefill is not None)
                     row = dict(length=length,requested_ratio=ratio,
-                               mode=mode,repeat=repeat-a.warmups,
+                               mode=mode,repeat=repeat-max(a.warmups, 1),
                                requested_hit_tokens=hit,
                                actual_host_hit_tokens=host,
                                injected_hit_tokens=injected,
@@ -280,7 +289,7 @@ def main():
                                peak_gpu_allocated_bytes=load["gpu_peak_allocated_bytes"]
                                if load else None,
                                verified=valid,status="measured" if valid else "unverified")
-                    if repeat >= a.warmups:
+                    if repeat >= max(a.warmups, 1):
                         result.append(row)
                         report(result,out/"matrix.csv")
                     print(json.dumps(row),flush=True)
