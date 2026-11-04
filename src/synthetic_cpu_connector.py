@@ -22,6 +22,7 @@ from vllm.distributed.kv_transfer.kv_connector.v1.base import (
     KVConnectorBase_V1, KVConnectorMetadata, KVConnectorRole,
 )
 from vllm.v1.metrics.cache_hit_source import CacheHitSource
+from vllm.utils.gpu_sync_debug import gpu_sync_allowed
 
 
 @dataclass
@@ -139,7 +140,8 @@ class SyntheticCPUConnector(KVConnectorBase_V1):
                     self._cpu_layers[layer_name] = host
                 index = block_ids_cpu.to(dst.device, non_blocking=False)
                 stage = torch.empty(shape, dtype=dst.dtype, device=dst.device)
-                torch.cuda.synchronize(dst.device)
+                with gpu_sync_allowed():
+                    torch.cuda.synchronize(dst.device)
                 prep_ms = (time.perf_counter_ns() - prep0) / 1e6
 
                 # CUDA events isolate H2D and block-scatter device activity.
@@ -151,7 +153,8 @@ class SyntheticCPUConnector(KVConnectorBase_V1):
                 h1.record()
                 dst.index_copy_(0, index, stage)
                 s1.record()
-                s1.synchronize()
+                with gpu_sync_allowed():
+                    s1.synchronize()
                 wall_ms = (time.perf_counter_ns() - wall0) / 1e6
                 h2d_ms = h0.elapsed_time(h1)
                 scatter_ms = h1.elapsed_time(s1)
