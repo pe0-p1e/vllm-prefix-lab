@@ -1,0 +1,160 @@
+{
+  "all_loads_pass": true,
+  "measured_rows": 250,
+  "readback_layers": 560,
+  "host_buffer_checks": [
+    {
+      "bytes": 58720256,
+      "requests": 13,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 117440512,
+      "requests": 13,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 234881024,
+      "requests": 13,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 469762048,
+      "requests": 13,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 939524096,
+      "requests": 13,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 117440512,
+      "requests": 13,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 234881024,
+      "requests": 13,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 469762048,
+      "requests": 13,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 939524096,
+      "requests": 13,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 1879048192,
+      "requests": 13,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 176160768,
+      "requests": 13,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 352321536,
+      "requests": 13,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 704643072,
+      "requests": 13,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 1409286144,
+      "requests": 13,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 2818572288,
+      "requests": 13,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 233046016,
+      "requests": 13,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 467927040,
+      "requests": 13,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 937689088,
+      "requests": 13,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 1877213184,
+      "requests": 13,
+      "host_buffers_stable": true
+    },
+    {
+      "bytes": 3756261376,
+      "requests": 13,
+      "host_buffers_stable": true
+    }
+  ],
+  "raw_load_checks_count": 260,
+  "unsupported_configurations": [
+    {
+      "length": "65536",
+      "requested_ratio": "0",
+      "reason": "max_position_embeddings=40960"
+    },
+    {
+      "length": "131072",
+      "requested_ratio": "0",
+      "reason": "max_position_embeddings=40960"
+    },
+    {
+      "length": "65536",
+      "requested_ratio": "0.25",
+      "reason": "max_position_embeddings=40960"
+    },
+    {
+      "length": "131072",
+      "requested_ratio": "0.25",
+      "reason": "max_position_embeddings=40960"
+    },
+    {
+      "length": "65536",
+      "requested_ratio": "0.5",
+      "reason": "max_position_embeddings=40960"
+    },
+    {
+      "length": "131072",
+      "requested_ratio": "0.5",
+      "reason": "max_position_embeddings=40960"
+    },
+    {
+      "length": "65536",
+      "requested_ratio": "0.75",
+      "reason": "max_position_embeddings=40960"
+    },
+    {
+      "length": "131072",
+      "requested_ratio": "0.75",
+      "reason": "max_position_embeddings=40960"
+    },
+    {
+      "length": "65536",
+      "requested_ratio": "1",
+      "reason": "max_position_embeddings=40960"
+    },
+    {
+      "length": "131072",
+      "requested_ratio": "1",
+      "reason": "max_position_embeddings=40960"
+    }
+  ]
+}
