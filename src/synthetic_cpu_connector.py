@@ -57,6 +57,9 @@ class SyntheticCPUConnector(KVConnectorBase_V1):
         self._pending: dict[str, int] = {}
         self._block_ids: dict[str, list[int]] = {}
         self._counter = 0
+        # Persist CPU-resident source KV across measured requests.
+        # The first request of each cell is excluded as warm-up.
+        self._cpu_layers: dict[str, torch.Tensor] = {}
         if self.forced_hit_tokens < 0 or self.forced_hit_tokens % self.block_size:
             raise ValueError("forced_hit_tokens must be >=0 and block aligned")
         if (vllm_config.parallel_config.world_size != 1
@@ -127,10 +130,13 @@ class SyntheticCPUConnector(KVConnectorBase_V1):
                     raise RuntimeError(f"KV block ID out of bounds: {layer_name}")
                 shape = (n_blocks, *dst.shape[1:])
                 prep0 = time.perf_counter_ns()
-                host = torch.empty(shape, dtype=dst.dtype, device="cpu",
-                                   pin_memory=self.pinned)
-                # Synthetic content is deliberately unrelated to the prompt.
-                host.fill_(0.125)
+                host = self._cpu_layers.get(layer_name)
+                if host is None or tuple(host.shape) != shape:
+                    host = torch.empty(shape, dtype=dst.dtype, device="cpu",
+                                       pin_memory=self.pinned)
+                    # Initialize once: measured requests reuse the same CPU KV.
+                    host.fill_(0.125)
+                    self._cpu_layers[layer_name] = host
                 index = block_ids_cpu.to(dst.device, non_blocking=False)
                 stage = torch.empty(shape, dtype=dst.dtype, device=dst.device)
                 torch.cuda.synchronize(dst.device)
@@ -155,7 +161,7 @@ class SyntheticCPUConnector(KVConnectorBase_V1):
                                     prepare_ms=prep_ms, h2d_cuda_ms=h2d_ms,
                                     scatter_cuda_ms=scatter_ms,
                                     load_wall_ms=wall_ms))
-                del host, index, stage
+                del index, stage
             self._counter += 1
             result = dict(
                 kind="synthetic_cpu_kv_live_vllm", request_id=load.request_id,
